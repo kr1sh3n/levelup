@@ -76,21 +76,33 @@ export const TASKS_DEFINITION = [
     skill: "creator",
     days: "daily",
   },
-  {
-    id: "upper",
-    label: "Upper Body Workout",
-    xp: 40,
-    skill: "fitness",
-    days: [1, 3], // Mon, Wed (0=Sun)
-  },
-  {
-    id: "lower",
-    label: "Lower Body Workout",
-    xp: 40,
-    skill: "fitness",
-    days: [2, 4], // Tue, Thu
-  },
+  // NOTE: Lifting is no longer a simple tap-task. It's driven by the routine
+  // system in the Gym tab (see LIFT_PATTERN below) and surfaces on Today as a
+  // dedicated Lifting card that completes when all exercises are checked off.
 ];
+
+// ── Lifting cycle ────────────────────────────────────────────────────────────
+// A repeating 7-day Upper/Lower split. Index 0 = "Day 1" (the first Upper day).
+export const LIFT_PATTERN = ["upper", "lower", "rest", "upper", "lower", "rest", "rest"];
+
+export const LIFT_XP = 40; // awarded when the whole day's lifting is complete
+
+// Given a date and which weekday is Day 1 (0=Sun..6=Sat), return 'upper'|'lower'|'rest'.
+export function liftTypeForDate(dateObj, day1Weekday) {
+  const offset = ((dateObj.getDay() - day1Weekday) % 7 + 7) % 7;
+  return LIFT_PATTERN[offset];
+}
+
+export const LIFT_TYPE_LABEL = { upper: "Upper Day", lower: "Lower Day", rest: "Rest Day" };
+
+// Per-tag training cue.
+export const LIFT_CUES = {
+  compound: "Leave 1–2 reps in reserve",
+  isolation: "Take to failure",
+};
+
+export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export const SKILL_COLORS = {
   fitness: { color: "#f97316", glow: "rgba(249,115,22,0.4)" },

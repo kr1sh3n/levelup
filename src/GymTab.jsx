@@ -1,19 +1,7 @@
 import { useState, useEffect, useRef } from "react";
+import { LIFT_TYPE_LABEL, LIFT_CUES, LIFT_PATTERN, WEEKDAY_SHORT } from "./gameData";
 
-// Workout type by weekday (matches the workout tasks): Mon/Wed upper, Tue/Thu lower.
-function workoutTypeToday() {
-  const d = new Date().getDay();
-  if (d === 1 || d === 3) return "Upper Body";
-  if (d === 2 || d === 4) return "Lower Body";
-  return "Free / Rest Day";
-}
-
-const SUGGESTED = {
-  "Upper Body": ["Bench Press", "Overhead Press", "Barbell Row", "Pull-up", "Bicep Curl"],
-  "Lower Body": ["Squat", "Deadlift", "Leg Press", "Romanian Deadlift", "Calf Raise"],
-  "Free / Rest Day": ["Squat", "Bench Press", "Deadlift"],
-};
-
+// ── Rest timer ────────────────────────────────────────────────────────────────
 function beep() {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -51,7 +39,6 @@ function RestTimer({ startSignal }) {
   const durationRef = useRef(duration);
   durationRef.current = duration;
 
-  // Auto-start when a set is logged (startSignal increments).
   useEffect(() => {
     if (startSignal === 0) return;
     setTimeLeft(durationRef.current);
@@ -59,7 +46,6 @@ function RestTimer({ startSignal }) {
     setRunning(true);
   }, [startSignal]);
 
-  // Countdown tick.
   useEffect(() => {
     if (!running) return;
     const id = setInterval(() => {
@@ -84,22 +70,11 @@ function RestTimer({ startSignal }) {
     setRunning(false);
     setJustDone(false);
   }
-
   function toggle() {
-    if (timeLeft === 0) {
-      setTimeLeft(duration);
-      setJustDone(false);
-      setRunning(true);
-    } else {
-      setRunning((r) => !r);
-    }
+    if (timeLeft === 0) { setTimeLeft(duration); setJustDone(false); setRunning(true); }
+    else setRunning((r) => !r);
   }
-
-  function reset() {
-    setRunning(false);
-    setTimeLeft(duration);
-    setJustDone(false);
-  }
+  function reset() { setRunning(false); setTimeLeft(duration); setJustDone(false); }
 
   return (
     <div className={`card rest-timer ${running ? "ticking" : ""} ${justDone ? "done" : ""}`}>
@@ -107,11 +82,7 @@ function RestTimer({ startSignal }) {
       <div className="rest-display">{justDone ? "DONE!" : fmt(timeLeft)}</div>
       <div className="rest-presets">
         {PRESETS.map((p) => (
-          <button
-            key={p}
-            className={`rest-preset ${duration === p ? "active" : ""}`}
-            onClick={() => pickPreset(p)}
-          >
+          <button key={p} className={`rest-preset ${duration === p ? "active" : ""}`} onClick={() => pickPreset(p)}>
             {fmt(p)}
           </button>
         ))}
@@ -126,9 +97,70 @@ function RestTimer({ startSignal }) {
   );
 }
 
-function SetRow({ set, onDelete }) {
+// ── Cycle editor ──────────────────────────────────────────────────────────────
+function CycleEditor({ store }) {
+  const { liftDay1, setLiftDay1 } = store;
+  const [open, setOpen] = useState(false);
+  const todayDow = new Date().getDay();
+
+  return (
+    <div className="card">
+      <div className="card-title cycle-head">
+        <span>Training Cycle</span>
+        <span className="link-btn" onClick={() => setOpen(!open)}>{open ? "Close" : "Edit"}</span>
+      </div>
+      <div className="cycle-row">
+        {WEEKDAY_SHORT.map((d, i) => {
+          const offset = ((i - liftDay1) % 7 + 7) % 7;
+          const type = LIFT_PATTERN[offset];
+          return (
+            <div key={i} className={`cycle-day ${type} ${i === todayDow ? "is-today" : ""}`}>
+              <span className="cycle-dow">{d}</span>
+              <span className="cycle-mark">{type === "upper" ? "U" : type === "lower" ? "L" : "·"}</span>
+            </div>
+          );
+        })}
+      </div>
+      {open && (
+        <div className="day1-picker">
+          <div className="day1-label">Day 1 (first Upper day) starts on:</div>
+          <div className="day1-btns">
+            {WEEKDAY_SHORT.map((d, i) => (
+              <button key={i} className={`day1-btn ${liftDay1 === i ? "active" : ""}`} onClick={() => setLiftDay1(i)}>
+                {d}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Overload banner ───────────────────────────────────────────────────────────
+function OverloadBanner({ store }) {
+  const { overloadDue, overloadLifts, dismissOverload } = store;
+  if (!overloadDue) return null;
+  return (
+    <div className="card overload-banner">
+      <div className="overload-title">PROGRESSIVE OVERLOAD WEEK</div>
+      <div className="overload-desc">Beat last week on your main lifts — add a rep or a little weight:</div>
+      {overloadLifts.map((l) => (
+        <div key={l.name} className="overload-row">
+          <span>{l.name}</span>
+          <span className="overload-target">{l.last.weight}kg × {l.last.reps}</span>
+        </div>
+      ))}
+      <button className="claim-btn ghost" onClick={dismissOverload}>GOT IT</button>
+    </div>
+  );
+}
+
+// ── Set row ───────────────────────────────────────────────────────────────────
+function SetRow({ set, index, onDelete }) {
   return (
     <div className="set-row">
+      <span className="set-num">Set {index + 1}</span>
       <span className="set-vol">{set.weight} kg × {set.reps}</span>
       {set.pr && <span className="pr-tag">PR</span>}
       <button className="del-btn small" onClick={onDelete}>×</button>
@@ -136,96 +168,174 @@ function SetRow({ set, onDelete }) {
   );
 }
 
-function ExerciseCard({ ex, store, onSetAdded }) {
-  const { addSet, deleteSet, deleteExercise, lastSessionFor, prs } = store;
+// ── Training-day exercise card ────────────────────────────────────────────────
+function ExerciseLogCard({ ex, store, onSetAdded }) {
+  const { todayLiftLog, addLiftSet, deleteLiftSet, toggleExerciseDone, lastLiftSessionFor } = store;
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
 
-  const last = lastSessionFor(ex.name);
-  const pr = prs[ex.name.toLowerCase().trim()];
+  const exLog = todayLiftLog.ex[ex.id] || { sets: [], done: false };
+  const last = lastLiftSessionFor(ex.id);
 
   function submit(e) {
     e.preventDefault();
     if (!reps) return;
-    addSet(ex.id, weight, reps);
+    addLiftSet(ex.id, ex.name, weight, reps);
     setReps("");
-    // keep weight for convenience between sets
     onSetAdded?.();
   }
 
   return (
-    <div className="exercise-card">
+    <div className={`exercise-card ${exLog.done ? "done" : ""} ${ex.tag}`}>
       <div className="exercise-head">
-        <div>
-          <div className="exercise-name">{ex.name}</div>
-          {last ? (
-            <div className="exercise-last">Last: {last.weight}kg × {last.reps} ({last.sets} sets)</div>
-          ) : (
-            <div className="exercise-last">First time — set a baseline!</div>
-          )}
+        <div className="exercise-headinfo">
+          <div className="exercise-name">
+            {ex.name}
+            <span className={`tag-badge ${ex.tag}`}>{ex.tag === "compound" ? "Compound" : "Isolation"}</span>
+          </div>
+          <div className="exercise-target">{ex.targetSets} sets · {ex.repLow}–{ex.repHigh} reps</div>
+          <div className="exercise-cue">{LIFT_CUES[ex.tag]}</div>
         </div>
-        <button className="del-btn" onClick={() => deleteExercise(ex.id)}>×</button>
+        <button
+          className={`done-check ${exLog.done ? "on" : ""}`}
+          onClick={() => toggleExerciseDone(ex.id)}
+          title="Mark exercise done"
+        >
+          {exLog.done ? "✓" : ""}
+        </button>
       </div>
 
-      {pr && (
-        <div className="pr-line">Best: {pr.maxWeight}kg · {pr.maxVolume} vol</div>
-      )}
+      <div className="exercise-last">
+        {last ? `Last: ${last.weight}kg × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})` : "No history yet — set a baseline!"}
+      </div>
 
-      {ex.sets.map((s, i) => (
-        <SetRow key={i} set={s} onDelete={() => deleteSet(ex.id, i)} />
+      {exLog.sets.map((s, i) => (
+        <SetRow key={i} set={s} index={i} onDelete={() => deleteLiftSet(ex.id, i)} />
       ))}
 
       <form className="set-form" onSubmit={submit}>
-        <input className="meal-input small" type="number" placeholder="kg" value={weight} onChange={(e) => setWeight(e.target.value)} />
+        <input className="meal-input small" type="number" inputMode="decimal" placeholder="kg" value={weight} onChange={(e) => setWeight(e.target.value)} />
         <span className="set-x">×</span>
-        <input className="meal-input small" type="number" placeholder="reps" value={reps} onChange={(e) => setReps(e.target.value)} />
+        <input className="meal-input small" type="number" inputMode="numeric" placeholder="reps" value={reps} onChange={(e) => setReps(e.target.value)} />
         <button type="submit" className="add-set-btn">+ SET</button>
       </form>
     </div>
   );
 }
 
-export default function GymTab({ store }) {
-  const { todayWorkout, addExercise, prs } = store;
-  const [name, setName] = useState("");
-  const [restSignal, setRestSignal] = useState(0);
-  const type = workoutTypeToday();
-  const suggestions = SUGGESTED[type] || [];
-  const usedNames = new Set(todayWorkout.map((e) => e.name.toLowerCase().trim()));
+// ── Routine builder ───────────────────────────────────────────────────────────
+const BLANK = { name: "", tag: "compound", targetSets: 3, repLow: 8, repHigh: 12 };
 
-  function add(n) {
-    if (!n.trim()) return;
-    addExercise(n);
-    setName("");
+function RoutineBuilder({ store }) {
+  const { routines, addRoutineExercise, updateRoutineExercise, removeRoutineExercise, moveRoutineExercise } = store;
+  const [type, setType] = useState("upper");
+  const [form, setForm] = useState(BLANK);
+  const list = routines[type] || [];
+
+  function add(e) {
+    e.preventDefault();
+    if (!form.name.trim()) return;
+    addRoutineExercise(type, form);
+    setForm(BLANK);
   }
 
+  return (
+    <div className="card">
+      <div className="card-title">Routine Builder</div>
+      <div className="slot-tabs">
+        <button className={`slot-tab ${type === "upper" ? "active" : ""}`} onClick={() => setType("upper")}>Upper Day</button>
+        <button className={`slot-tab ${type === "lower" ? "active" : ""}`} onClick={() => setType("lower")}>Lower Day</button>
+      </div>
+
+      {list.length === 0 && <div className="builder-empty">No exercises yet. Add your first {type} lift below.</div>}
+
+      {list.map((ex, idx) => (
+        <div key={ex.id} className="builder-row">
+          <div className="builder-arrows">
+            <button onClick={() => moveRoutineExercise(type, ex.id, -1)} disabled={idx === 0}>▲</button>
+            <button onClick={() => moveRoutineExercise(type, ex.id, 1)} disabled={idx === list.length - 1}>▼</button>
+          </div>
+          <div className="builder-main">
+            <div className="builder-name">{ex.name}</div>
+            <div className="builder-meta">{ex.targetSets} × {ex.repLow}–{ex.repHigh}</div>
+          </div>
+          <button
+            className={`tag-toggle ${ex.tag}`}
+            onClick={() => updateRoutineExercise(type, ex.id, { tag: ex.tag === "compound" ? "isolation" : "compound" })}
+            title="Toggle Compound / Isolation"
+          >
+            {ex.tag === "compound" ? "Comp" : "Iso"}
+          </button>
+          <button className="del-btn small" onClick={() => removeRoutineExercise(type, ex.id)}>×</button>
+        </div>
+      ))}
+
+      <form className="builder-form" onSubmit={add}>
+        <input className="meal-input" placeholder="Exercise name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+        <div className="builder-form-row">
+          <button type="button" className={`tag-toggle ${form.tag}`} onClick={() => setForm({ ...form, tag: form.tag === "compound" ? "isolation" : "compound" })}>
+            {form.tag === "compound" ? "Compound" : "Isolation"}
+          </button>
+          <label className="mini-field">
+            <span>Sets</span>
+            <input type="number" value={form.targetSets} onChange={(e) => setForm({ ...form, targetSets: e.target.value })} />
+          </label>
+          <label className="mini-field">
+            <span>Reps</span>
+            <input type="number" value={form.repLow} onChange={(e) => setForm({ ...form, repLow: e.target.value })} />
+            <span className="dash">–</span>
+            <input type="number" value={form.repHigh} onChange={(e) => setForm({ ...form, repHigh: e.target.value })} />
+          </label>
+        </div>
+        <button type="submit" className="claim-btn">ADD EXERCISE</button>
+      </form>
+    </div>
+  );
+}
+
+// ── Gym tab ───────────────────────────────────────────────────────────────────
+export default function GymTab({ store }) {
+  const { todayLiftType, todayRoutine, liftComplete, liftDoneCount, prs } = store;
+  const [restSignal, setRestSignal] = useState(0);
+  const isTraining = todayLiftType === "upper" || todayLiftType === "lower";
   const prList = Object.values(prs).sort((a, b) => b.maxWeight - a.maxWeight);
 
   return (
     <div className="page">
       <div className="card">
         <div className="card-title">Today&apos;s Session</div>
-        <div className="workout-type">{type}</div>
+        <div className="workout-type">{LIFT_TYPE_LABEL[todayLiftType]}</div>
+        {isTraining && todayRoutine.length > 0 && (
+          <div className={`lift-progress-text ${liftComplete ? "complete" : ""}`}>
+            {liftComplete ? `✓ Lift complete — ${todayRoutine.length} exercises done` : `${liftDoneCount} / ${todayRoutine.length} exercises done`}
+          </div>
+        )}
       </div>
 
-      <RestTimer startSignal={restSignal} />
+      <CycleEditor store={store} />
 
-      {todayWorkout.map((ex) => (
-        <ExerciseCard key={ex.id} ex={ex} store={store} onSetAdded={() => setRestSignal((n) => n + 1)} />
-      ))}
-
-      <div className="card">
-        <div className="card-title">Add Exercise</div>
-        <form onSubmit={(e) => { e.preventDefault(); add(name); }}>
-          <input className="meal-input" placeholder="Exercise name" value={name} onChange={(e) => setName(e.target.value)} />
-          <button type="submit" className="claim-btn">ADD EXERCISE</button>
-        </form>
-        <div className="suggest-row">
-          {suggestions.filter((s) => !usedNames.has(s.toLowerCase())).map((s) => (
-            <button key={s} className="suggest-chip" onClick={() => add(s)}>+ {s}</button>
-          ))}
+      {isTraining ? (
+        todayRoutine.length === 0 ? (
+          <div className="card builder-empty big">
+            Your <strong>{todayLiftType}</strong> routine is empty. Build it in the Routine Builder below to start logging.
+          </div>
+        ) : (
+          <>
+            <OverloadBanner store={store} />
+            <RestTimer startSignal={restSignal} />
+            {todayRoutine.map((ex) => (
+              <ExerciseLogCard key={ex.id} ex={ex} store={store} onSetAdded={() => setRestSignal((n) => n + 1)} />
+            ))}
+          </>
+        )
+      ) : (
+        <div className="card rest-day-card">
+          <div className="rest-day-title">Rest Day</div>
+          <div className="rest-day-desc">Recover and grow — no lifting scheduled today.</div>
         </div>
-      </div>
+      )}
+
+      <RoutineBuilder store={store} />
 
       {prList.length > 0 && (
         <div className="card">

@@ -75,7 +75,7 @@ function SkillRows({ skillXp }) {
 
 // ── Today Tab ─────────────────────────────────────────────────────────────────
 
-function TodayTab({ store }) {
+function TodayTab({ store, setTab }) {
   const {
     state,
     todayTasks,
@@ -85,10 +85,15 @@ function TodayTab({ store }) {
     allTodayDone,
     completeTask,
     claimBossDay,
+    todayLiftType,
+    todayRoutine,
+    liftComplete,
+    liftDoneCount,
   } = store;
 
   const multiplier = getStreakMultiplier(state.streak);
   const groups = groupTasksBySkill(todayTasks);
+  const isTraining = todayLiftType === "upper" || todayLiftType === "lower";
 
   return (
     <div className="page">
@@ -116,6 +121,30 @@ function TodayTab({ store }) {
           </button>
         </div>
       )}
+
+      {/* Lifting — routine-driven, completes in the Gym tab */}
+      <div className="section-head" style={{ color: SKILL_COLORS.fitness.color }}>Fitness</div>
+      <div
+        className={`task-item lift-card ${liftComplete ? "done" : ""}`}
+        style={{ "--accent": SKILL_COLORS.fitness.color }}
+        onClick={() => setTab("gym")}
+      >
+        <div className="task-info">
+          <div className="task-label">
+            Lifting · {todayLiftType === "upper" ? "Upper Day" : todayLiftType === "lower" ? "Lower Day" : "Rest Day"}
+          </div>
+          <div className="task-xp">
+            {!isTraining
+              ? "Recovery day — no lifting scheduled"
+              : todayRoutine.length === 0
+              ? "Build your routine in the Gym tab →"
+              : liftComplete
+              ? `+${Math.round(40 * multiplier)} XP earned · all exercises done`
+              : `${liftDoneCount}/${todayRoutine.length} exercises · tap to log in Gym →`}
+          </div>
+        </div>
+        <div className="task-check">{liftComplete ? "✓" : ""}</div>
+      </div>
 
       {SKILL_GROUP_ORDER.filter((s) => groups[s]).map((skill) => (
         <div key={skill}>
@@ -441,7 +470,7 @@ export default function App() {
     <div className="app">
       <Header state={store.state} />
 
-      {tab === "today" && <TodayTab store={store} />}
+      {tab === "today" && <TodayTab store={store} setTab={setTab} />}
       {tab === "meals" && <MealsTab store={store} />}
       {tab === "gym" && <GymTab store={store} />}
       {tab === "quests" && <QuestsTab store={store} />}

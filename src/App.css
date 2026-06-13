@@ -1036,3 +1036,120 @@ body {
   box-shadow: 0 4px 16px var(--purple-glow);
 }
 .rest-btn.primary:hover { transform: scale(1.02); }
+
+/* ════════════ Lifting system ════════════ */
+
+/* Today lift card */
+.lift-card { align-items: center; }
+.lift-progress-text { font-size: 13px; color: var(--text-muted); font-weight: 600; margin-top: 8px; }
+.lift-progress-text.complete { color: var(--green); }
+
+/* Cycle editor */
+.cycle-head { display: flex; justify-content: space-between; align-items: center; }
+.cycle-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.cycle-day {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 2px; border-radius: 9px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+}
+.cycle-dow { font-size: 10px; font-weight: 700; color: var(--text-muted); font-family: var(--font-display); }
+.cycle-mark { font-family: var(--font-display); font-size: 15px; font-weight: 900; }
+.cycle-day.upper { border-color: rgba(249,115,22,0.4); }
+.cycle-day.upper .cycle-mark { color: var(--orange); }
+.cycle-day.lower { border-color: rgba(96,165,250,0.4); }
+.cycle-day.lower .cycle-mark { color: var(--blue); }
+.cycle-day.rest .cycle-mark { color: var(--text-muted); }
+.cycle-day.is-today { box-shadow: 0 0 0 2px var(--purple), 0 0 12px var(--purple-glow); }
+
+.day1-picker { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.day1-label { font-size: 12px; color: var(--text-muted); font-weight: 600; margin-bottom: 8px; }
+.day1-btns { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.day1-btn {
+  padding: 9px 2px; border-radius: 8px;
+  background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+  color: var(--text-muted); font-family: var(--font-display); font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: all 0.2s;
+}
+.day1-btn.active { background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(124,58,237,0.1)); border-color: var(--purple); color: var(--purple-bright); box-shadow: 0 0 10px var(--purple-glow); }
+
+/* Overload banner */
+.overload-banner { border-color: rgba(249,115,22,0.45); background: linear-gradient(135deg, rgba(249,115,22,0.12), rgba(124,58,237,0.08)); }
+.overload-title { font-family: var(--font-display); font-size: 13px; font-weight: 900; letter-spacing: 1.5px; color: var(--orange); margin-bottom: 6px; }
+.overload-desc { font-size: 13px; color: var(--text-muted); margin-bottom: 12px; line-height: 1.4; }
+.overload-row { display: flex; justify-content: space-between; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; }
+.overload-row:last-of-type { border-bottom: none; }
+.overload-target { font-family: var(--font-display); font-weight: 700; color: var(--orange); }
+
+/* Exercise log card */
+.exercise-card.compound { border-left-color: var(--orange); }
+.exercise-card.isolation { border-left-color: var(--blue); }
+.exercise-card.done { border-left-color: var(--green); }
+.exercise-card.done .exercise-name { color: var(--green); }
+.exercise-headinfo { flex: 1; }
+
+.tag-badge {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 5px;
+  font-family: var(--font-display); font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  vertical-align: middle;
+}
+.tag-badge.compound { background: rgba(249,115,22,0.18); color: var(--orange); border: 1px solid rgba(249,115,22,0.4); }
+.tag-badge.isolation { background: rgba(96,165,250,0.18); color: var(--blue); border: 1px solid rgba(96,165,250,0.4); }
+
+.exercise-target { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-weight: 600; }
+.exercise-cue { font-size: 12px; color: var(--purple-light); margin-top: 3px; font-style: italic; font-weight: 600; }
+
+.done-check {
+  width: 30px; height: 30px; flex-shrink: 0;
+  border-radius: 8px; border: 2px solid var(--border-strong);
+  background: rgba(0,0,0,0.2); color: white;
+  font-size: 16px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+}
+.done-check.on { background: linear-gradient(135deg, var(--green), #16a34a); border-color: var(--green); box-shadow: 0 0 12px rgba(74,222,128,0.4); }
+
+.set-num { font-size: 11px; color: var(--text-muted); font-weight: 700; font-family: var(--font-display); width: 42px; }
+
+/* Routine builder */
+.builder-empty { font-size: 13px; color: var(--text-muted); text-align: center; padding: 12px 0; line-height: 1.5; }
+.builder-empty.big { padding: 24px 12px; }
+.builder-empty strong { color: var(--text); text-transform: capitalize; }
+
+.builder-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px; margin-bottom: 8px;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+}
+.builder-arrows { display: flex; flex-direction: column; gap: 2px; }
+.builder-arrows button {
+  width: 22px; height: 16px; line-height: 1; padding: 0;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--text-muted); font-size: 9px; cursor: pointer; transition: all 0.15s;
+}
+.builder-arrows button:hover:not(:disabled) { border-color: var(--purple); color: var(--purple-bright); }
+.builder-arrows button:disabled { opacity: 0.3; cursor: default; }
+.builder-main { flex: 1; }
+.builder-name { font-size: 15px; font-weight: 600; }
+.builder-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-weight: 600; }
+
+.tag-toggle {
+  padding: 6px 10px; border-radius: 7px; cursor: pointer; transition: all 0.2s;
+  font-family: var(--font-display); font-size: 10px; font-weight: 700; letter-spacing: 0.5px; white-space: nowrap;
+}
+.tag-toggle.compound { background: rgba(249,115,22,0.18); color: var(--orange); border: 1px solid rgba(249,115,22,0.4); }
+.tag-toggle.isolation { background: rgba(96,165,250,0.18); color: var(--blue); border: 1px solid rgba(96,165,250,0.4); }
+
+.builder-form { margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--border); }
+.builder-form-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.mini-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.mini-field input {
+  width: 46px; text-align: center; padding: 7px 4px;
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border-strong); border-radius: 7px;
+  color: var(--text); font-family: var(--font-body); font-size: 14px; font-weight: 600;
+}
+.mini-field input:focus { outline: none; border-color: var(--purple); }
+.mini-field .dash { color: var(--text-muted); }
+
+/* Rest day */
+.rest-day-card { text-align: center; padding: 28px 16px; }
+.rest-day-title { font-family: var(--font-display); font-size: 18px; font-weight: 900; letter-spacing: 2px; color: var(--text-muted); margin-bottom: 6px; }
+.rest-day-desc { font-size: 14px; color: var(--text-muted); }
