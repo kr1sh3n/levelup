@@ -7,6 +7,7 @@ import {
   XP_PER_LEVEL,
   liftTypeForDate,
   LIFT_XP,
+  DEFAULT_REMINDERS,
 } from "./gameData";
 
 const STORE_KEY = "levelup_v1";
@@ -70,6 +71,9 @@ function defaultState() {
     routines: { upper: [], lower: [] }, // ex: {id, name, tag:'compound'|'isolation', targetSets, repLow, repHigh}
     liftLogs: {}, // { "YYYY-MM-DD": { type, ex: { [exId]: { sets:[{weight,reps,pr}], done } } } }
     lastOverloadWeek: null, // ISO week key the overload reminder was last dismissed
+
+    // ── Reminders ──
+    reminderTimes: { ...DEFAULT_REMINDERS }, // { habitId: "HH:MM" }
   };
 }
 
@@ -325,6 +329,11 @@ export function useGameStore() {
     setState((prev) => ({ ...prev, nutritionGoals: { ...prev.nutritionGoals, ...goals } }));
   }, []);
 
+  // ── Reminders ──
+  const setReminderTime = useCallback((habitId, time) => {
+    setState((prev) => ({ ...prev, reminderTimes: { ...prev.reminderTimes, [habitId]: time } }));
+  }, []);
+
   // ── Lifting: cycle config ──
   const setLiftDay1 = useCallback((weekday) => {
     setState((prev) => ({ ...prev, liftDay1: weekday }));
@@ -562,6 +571,26 @@ export function useGameStore() {
     return out;
   })();
 
+  // Per-habit completion history: current streak + set of completed dates.
+  // Works for any daily task id (incl. "lift").
+  const habitHistory = (taskId) => {
+    const done = (d) => (state.completedTasks[d] || []).includes(taskId);
+    const completedDates = Object.keys(state.completedTasks).filter((d) => done(d));
+
+    // Streak: count back from today; don't break just because today isn't done yet.
+    let streak = 0;
+    const cursor = new Date();
+    if (!done(today)) cursor.setDate(cursor.getDate() - 1);
+    for (;;) {
+      const key = cursor.toISOString().slice(0, 10);
+      if (done(key)) {
+        streak++;
+        cursor.setDate(cursor.getDate() - 1);
+      } else break;
+    }
+    return { streak, completedDates: new Set(completedDates) };
+  };
+
   // Most recent prior session for a routine exercise (by exId) — top weight set.
   const lastLiftSessionFor = (exId) => {
     const dates = Object.keys(state.liftLogs)
@@ -634,5 +663,10 @@ export function useGameStore() {
     overloadDue,
     overloadLifts,
     dismissOverload: () => setState((prev) => ({ ...prev, lastOverloadWeek: wk })),
+
+    // Habit history + reminders
+    habitHistory,
+    reminderTimes: state.reminderTimes,
+    setReminderTime,
   };
 }

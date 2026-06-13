@@ -76,10 +76,80 @@ export const TASKS_DEFINITION = [
     skill: "creator",
     days: "daily",
   },
+  {
+    id: "morningSkincare",
+    label: "Morning Skincare",
+    xp: 10,
+    skill: "health",
+    days: "daily",
+    steps: "morning",
+  },
+  {
+    id: "nightSkincare",
+    label: "Night Skincare",
+    xp: 10,
+    skill: "health",
+    days: "daily",
+    steps: "night",
+  },
+  {
+    id: "creatine",
+    label: "Creatine — 5g",
+    xp: 10,
+    skill: "health",
+    days: "daily",
+  },
   // NOTE: Lifting is no longer a simple tap-task. It's driven by the routine
   // system in the Gym tab (see LIFT_PATTERN below) and surfaces on Today as a
   // dedicated Lifting card that completes when all exercises are checked off.
 ];
+
+// ── Skincare step displays ────────────────────────────────────────────────────
+export const MORNING_SKINCARE_STEPS = [
+  { label: "Cleanse" },
+  { label: "Moisturizer" },
+  { label: "SPF50 Sunscreen", must: true }, // non-skippable — highlighted
+];
+
+// Night treatment by weekday (0=Sun .. 6=Sat)
+export const NIGHT_TREATMENT = {
+  0: "Calamine (oil control)",
+  1: "Centella serum",
+  2: "Centella serum",
+  3: "Salicylic acid",
+  4: "Centella serum",
+  5: "Centella serum",
+  6: "Salicylic acid",
+};
+
+export function nightSkincareSteps(dateObj) {
+  return [
+    { label: "Cleanse" },
+    { label: NIGHT_TREATMENT[dateObj.getDay()], treatment: true },
+    { label: "Moisturizer" },
+  ];
+}
+
+// Resolve a task's ordered steps for a given date (or null if it has none).
+export function stepsForTask(task, dateObj) {
+  if (task.steps === "morning") return MORNING_SKINCARE_STEPS;
+  if (task.steps === "night") return nightSkincareSteps(dateObj);
+  return null;
+}
+
+// ── Reminders ─────────────────────────────────────────────────────────────────
+// Habits that get a daily reminder. Times are "HH:MM" (24h). Editable in-app.
+export const REMINDER_HABITS = [
+  { id: "morningSkincare", label: "Morning Skincare", default: "08:00", desc: "Cleanse → Moisturizer → SPF50 Sunscreen" },
+  { id: "creatine", label: "Creatine (5g)", default: "08:00", desc: "Take 5g creatine with breakfast" },
+  { id: "lift", label: "Lifting", default: "17:00", desc: "Today's training session (see app)" },
+  { id: "nightSkincare", label: "Night Skincare", default: "22:00", desc: "Cleanse → today's treatment → Moisturizer" },
+];
+
+export const DEFAULT_REMINDERS = REMINDER_HABITS.reduce((acc, h) => {
+  acc[h.id] = h.default;
+  return acc;
+}, {});
 
 // ── Lifting cycle ────────────────────────────────────────────────────────────
 // A repeating 7-day Upper/Lower split. Index 0 = "Day 1" (the first Upper day).

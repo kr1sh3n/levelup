@@ -13,6 +13,8 @@ import {
   SKILL_LABELS,
   XP_PER_LEVEL,
   isBossDay,
+  stepsForTask,
+  REMINDER_HABITS,
 } from "./gameData";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -89,11 +91,16 @@ function TodayTab({ store, setTab }) {
     todayRoutine,
     liftComplete,
     liftDoneCount,
+    reminderTimes,
+    habitHistory,
   } = store;
 
   const multiplier = getStreakMultiplier(state.streak);
   const groups = groupTasksBySkill(todayTasks);
   const isTraining = todayLiftType === "upper" || todayLiftType === "lower";
+  const now = new Date();
+  const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  const [historyHabit, setHistoryHabit] = useState(null);
 
   return (
     <div className="page">
@@ -154,6 +161,10 @@ function TodayTab({ store, setTab }) {
           {groups[skill].map((task) => {
             const done = todayDone.includes(task.id);
             const earned = Math.round(task.xp * multiplier);
+            const steps = stepsForTask(task, now);
+            const reminder = reminderTimes[task.id];
+            const due = reminder && !done && nowHHMM >= reminder;
+            const hist = habitHistory(task.id);
             return (
               <div
                 key={task.id}
@@ -162,11 +173,31 @@ function TodayTab({ store, setTab }) {
                 onClick={() => !done && completeTask(task.id, task.xp, task.skill)}
               >
                 <div className="task-info">
-                  <div className="task-label">{task.label}</div>
+                  <div className="task-label">
+                    {task.label}
+                    {due && <span className="due-badge">DUE</span>}
+                  </div>
+                  {steps && (
+                    <div className="step-chain">
+                      {steps.map((s, i) => (
+                        <span key={i} className="step-seg">
+                          <span className={`step ${s.must ? "must" : ""} ${s.treatment ? "treatment" : ""}`}>{s.label}</span>
+                          {i < steps.length - 1 && <span className="step-arrow">→</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <div className="task-xp">
                     +{earned} XP{multiplier > 1 && ` (${task.xp} × ${multiplier})`}
                   </div>
                 </div>
+                <button
+                  className="streak-chip"
+                  onClick={(e) => { e.stopPropagation(); setHistoryHabit(task); }}
+                  title="View history"
+                >
+                  {hist.streak}d
+                </button>
                 <div className="task-check">{done ? "✓" : ""}</div>
               </div>
             );
@@ -179,6 +210,55 @@ function TodayTab({ store, setTab }) {
           <div>No tasks today. Rest up, adventurer.</div>
         </div>
       )}
+
+      {historyHabit && (
+        <HabitHistoryModal task={historyHabit} habitHistory={habitHistory} onClose={() => setHistoryHabit(null)} />
+      )}
+    </div>
+  );
+}
+
+// ── Habit history modal ───────────────────────────────────────────────────────
+
+function HabitHistoryModal({ task, habitHistory, onClose }) {
+  const { streak, completedDates } = habitHistory(task.id);
+
+  const days = [];
+  for (let i = 34; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    days.push({ key, done: completedDates.has(key) });
+  }
+  const firstDow = new Date(days[0].key).getDay();
+  const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+  const totalDone = days.filter((d) => d.done).length;
+
+  return (
+    <div className="milestone-overlay" onClick={onClose}>
+      <div className="habit-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="habit-modal-title">{task.label}</div>
+        <div className="habit-streak-big">
+          {streak}<span> day streak</span>
+        </div>
+        <div className="habit-sub">{totalDone} of last 35 days completed</div>
+
+        <div className="heatmap-labels">
+          {DAY_LABELS.map((l, i) => (
+            <div key={i} className="heatmap-label">{l}</div>
+          ))}
+        </div>
+        <div className="heatmap">
+          {Array.from({ length: firstDow }).map((_, i) => (
+            <div key={`p${i}`} className="heatmap-day pad" />
+          ))}
+          {days.map((d) => (
+            <div key={d.key} className={`heatmap-day ${d.done ? "lvl4" : ""}`} title={d.key} />
+          ))}
+        </div>
+
+        <button className="milestone-btn" onClick={onClose}>CLOSE</button>
+      </div>
     </div>
   );
 }
@@ -291,14 +371,53 @@ function StatsTab({ store }) {
 
 // ── Profile Tab ───────────────────────────────────────────────────────────────
 
+function buildICS(reminderTimes) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const now = new Date();
+  const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
+  const dateBase = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LevelUp//Habits//EN", "CALSCALE:GREGORIAN"];
+  REMINDER_HABITS.forEach((h) => {
+    const t = reminderTimes[h.id] || h.default;
+    const [hh, mm] = t.split(":");
+    lines.push(
+      "BEGIN:VEVENT",
+      `UID:levelup-${h.id}@levelup.app`,
+      `DTSTAMP:${stamp}`,
+      `DTSTART:${dateBase}T${hh}${mm}00`,
+      "RRULE:FREQ=DAILY",
+      `SUMMARY:LevelUp — ${h.label}`,
+      `DESCRIPTION:${h.desc}`,
+      "BEGIN:VALARM",
+      "TRIGGER:PT0M",
+      "ACTION:DISPLAY",
+      `DESCRIPTION:${h.label}`,
+      "END:VALARM",
+      "END:VEVENT"
+    );
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+
 function ProfileTab({ store }) {
-  const { state, importData } = store;
+  const { state, importData, reminderTimes, setReminderTime } = store;
   const level = getLevel(state.totalXp);
   const xpInLevel = getXpInCurrentLevel(state.totalXp);
   const title = getLevelTitle(level);
   const multiplier = getStreakMultiplier(state.streak);
   const fileRef = useRef(null);
   const [backupMsg, setBackupMsg] = useState(null);
+
+  function exportReminders() {
+    const blob = new Blob([buildICS(reminderTimes)], { type: "text/calendar" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "levelup-reminders.ics";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   function flash(msg) {
     setBackupMsg(msg);
@@ -364,6 +483,33 @@ function ProfileTab({ store }) {
           <div className="stat-value" style={{ fontSize: 16 }}>{multiplier}x</div>
           <div className="stat-label">XP Multiplier</div>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">Daily Reminders</div>
+        <p className="backup-note">
+          Set a time for each habit, then add them to your phone&apos;s calendar to get real daily notifications.
+        </p>
+        {REMINDER_HABITS.map((h) => (
+          <div key={h.id} className="reminder-row">
+            <div className="reminder-info">
+              <div className="reminder-name">{h.label}</div>
+              <div className="reminder-desc">{h.desc}</div>
+            </div>
+            <input
+              type="time"
+              className="reminder-time"
+              value={reminderTimes[h.id] || h.default}
+              onChange={(e) => setReminderTime(h.id, e.target.value)}
+            />
+          </div>
+        ))}
+        <button className="claim-btn" style={{ marginTop: 14 }} onClick={exportReminders}>
+          ADD TO CALENDAR (.ICS)
+        </button>
+        <p className="backup-note" style={{ marginTop: 10, marginBottom: 0 }}>
+          On iPhone: open the downloaded file → Add All to Calendar. The events repeat daily and fire real notifications even when the app is closed.
+        </p>
       </div>
 
       <div className="card">
