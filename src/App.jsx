@@ -376,7 +376,7 @@ function buildICS(reminderTimes) {
   const now = new Date();
   const stamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}T${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}Z`;
   const dateBase = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`;
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//LevelUp//Habits//EN", "CALSCALE:GREGORIAN"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Pdash//Habits//EN", "CALSCALE:GREGORIAN"];
   REMINDER_HABITS.forEach((h) => {
     const t = reminderTimes[h.id] || h.default;
     const [hh, mm] = t.split(":");
@@ -386,7 +386,7 @@ function buildICS(reminderTimes) {
       `DTSTAMP:${stamp}`,
       `DTSTART:${dateBase}T${hh}${mm}00`,
       "RRULE:FREQ=DAILY",
-      `SUMMARY:LevelUp — ${h.label}`,
+      `SUMMARY:Pdash — ${h.label}`,
       `DESCRIPTION:${h.desc}`,
       "BEGIN:VALARM",
       "TRIGGER:PT0M",
@@ -430,7 +430,7 @@ function ProfileTab({ store }) {
     const a = document.createElement("a");
     const stamp = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `levelup-backup-${stamp}.json`;
+    a.download = `pdash-backup-${stamp}.json`;
     a.click();
     URL.revokeObjectURL(url);
     flash("✓ Backup downloaded");
@@ -579,7 +579,7 @@ function Header({ state }) {
   return (
     <div className="header">
       <div className="header-top">
-        <div className="logo">LEVELUP</div>
+        <div className="logo">PDASH</div>
         <div className="header-right">
           <div className="level-badge">LVL {level}</div>
           <div className="level-title">{title}</div>

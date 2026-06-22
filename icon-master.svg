@@ -1,22 +1,83 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1a1030"/>
-      <stop offset="1" stop-color="#0a0a0f"/>
+    <!-- background red gradient -->
+    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
+      <stop offset="0" stop-color="#9b1c1c"/>
+      <stop offset="0.55" stop-color="#5e0f0f"/>
+      <stop offset="1" stop-color="#220404"/>
+    </radialGradient>
+
+    <!-- bright accent for the mark -->
+    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fca5a5"/>
+      <stop offset="0.5" stop-color="#ef4444"/>
+      <stop offset="1" stop-color="#991b1b"/>
     </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#c4b5fd"/>
-      <stop offset="0.55" stop-color="#7c3aed"/>
-      <stop offset="1" stop-color="#ec4899"/>
-    </linearGradient>
+
+    <!-- grunge noise texture -->
+    <filter id="grunge" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.1" result="a"/>
+    </filter>
+
+    <!-- coarse blotches for worn areas -->
+    <filter id="blotch" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="3" result="n"/>
+      <feColorMatrix in="n" type="matrix"
+        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.1 0.9" result="a"/>
+    </filter>
+
+    <!-- rough/distressed edges for the mark -->
+    <filter id="rough" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="11" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="9" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+
     <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feGaussianBlur stdDeviation="10" result="b"/>
       <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+
+    <clipPath id="round"><rect width="512" height="512" rx="112"/></clipPath>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <g filter="url(#glow)" stroke="url(#accent)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    <polyline points="140,300 256,184 372,300"/>
-    <polyline points="140,392 256,276 372,392"/>
+
+  <g clip-path="url(#round)">
+    <!-- base -->
+    <rect width="512" height="512" fill="url(#bg)"/>
+
+    <!-- worn blotches (darken) -->
+    <rect width="512" height="512" filter="url(#blotch)" fill="#1a0303" opacity="0.55"/>
+
+    <!-- fine grit (lighten + darken speckle) -->
+    <rect width="512" height="512" filter="url(#grunge)" fill="#000000" opacity="0.45"/>
+    <rect width="512" height="512" filter="url(#grunge)" fill="#ff6b6b" opacity="0.10"/>
+
+    <!-- scratches -->
+    <g stroke="#2a0505" stroke-width="2" opacity="0.5">
+      <line x1="40" y1="120" x2="470" y2="150"/>
+      <line x1="20" y1="360" x2="500" y2="330"/>
+      <line x1="90" y1="460" x2="420" y2="430"/>
+    </g>
+    <g stroke="#ff8a8a" stroke-width="1.5" opacity="0.18">
+      <line x1="60" y1="200" x2="450" y2="225"/>
+      <line x1="30" y1="290" x2="480" y2="270"/>
+    </g>
+
+    <!-- the double-chevron mark, distressed + glowing -->
+    <g filter="url(#glow)">
+      <g filter="url(#rough)" stroke="url(#accent)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none">
+        <polyline points="140,300 256,186 372,300"/>
+        <polyline points="140,388 256,274 372,388"/>
+      </g>
+    </g>
+
+    <!-- vignette -->
+    <rect width="512" height="512" fill="url(#bg)" opacity="0"/>
+    <radialGradient id="vig" cx="50%" cy="50%" r="62%">
+      <stop offset="0.6" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
+    </radialGradient>
+    <rect width="512" height="512" fill="url(#vig)"/>
   </g>
 </svg>

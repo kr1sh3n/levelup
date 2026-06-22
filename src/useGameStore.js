@@ -510,9 +510,9 @@ export function useGameStore() {
   // ── Backup ──
   const importData = useCallback((parsed) => {
     if (!parsed || typeof parsed !== "object") throw new Error("Invalid file");
-    // Sanity check: must look like a LevelUp save.
+    // Sanity check: must look like a Pdash save.
     if (!("totalXp" in parsed) || !("skillXp" in parsed)) {
-      throw new Error("This doesn't look like a LevelUp backup.");
+      throw new Error("This doesn't look like a Pdash backup.");
     }
     setState({ ...defaultState(), ...parsed });
   }, []);
