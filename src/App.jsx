@@ -120,7 +120,7 @@ function TodayTab({ store, setTab }) {
           </div>
           <button
             className="claim-btn"
-            style={{ background: bossClaimed ? undefined : "linear-gradient(135deg, #dc2626, #9333ea)" }}
+            style={{ background: bossClaimed ? undefined : "linear-gradient(135deg, #dc2626, #7f1d1d)" }}
             disabled={!allTodayDone || bossClaimed}
             onClick={claimBossDay}
           >
@@ -535,7 +535,7 @@ function MilestoneOverlay({ milestone, onDismiss }) {
     if (!milestone) return;
     const end = Date.now() + 2000;
     const frame = () => {
-      confetti({ particleCount: 6, spread: 70, origin: { y: 0.6 }, colors: ["#7c3aed", "#a78bfa", "#ec4899", "#f97316"] });
+      confetti({ particleCount: 6, spread: 70, origin: { y: 0.6 }, colors: ["#dc2626", "#ef4444", "#f43f5e", "#fca5a5"] });
       if (Date.now() < end) requestAnimationFrame(frame);
     };
     frame();
