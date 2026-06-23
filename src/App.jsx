@@ -461,8 +461,8 @@ function ProfileTab({ store }) {
   return (
     <div className="page">
       <div className="profile-avatar">{level}</div>
-      <div className="profile-name">LVL {level} PLAYER</div>
-      <div className="profile-title">{title}</div>
+      <div className="profile-name">KR1SH3N</div>
+      <div className="profile-title">PLAYER 1 · LVL {level} · {title}</div>
 
       <div className="card">
         <div className="card-title">Progress to Next Level</div>
