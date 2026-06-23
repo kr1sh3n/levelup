@@ -4,6 +4,9 @@ import "./App.css";
 import { useGameStore } from "./useGameStore";
 import MealsTab from "./MealsTab";
 import GymTab from "./GymTab";
+import PixelIcon from "./PixelIcon";
+
+const SKILL_PIXEL = { fitness: "dumbbell", mind: "book", creator: "play", health: "plus" };
 import {
   getLevel,
   getXpInCurrentLevel,
@@ -155,7 +158,8 @@ function TodayTab({ store, setTab }) {
 
       {SKILL_GROUP_ORDER.filter((s) => groups[s]).map((skill) => (
         <div key={skill}>
-          <div className="section-head" style={{ color: SKILL_COLORS[skill].color }}>
+          <div className="section-head px-head" style={{ color: SKILL_COLORS[skill].color }}>
+            <PixelIcon name={SKILL_PIXEL[skill]} size={18} />
             {SKILL_LABELS[skill]}
           </div>
           {groups[skill].map((task) => {
@@ -592,7 +596,7 @@ function Header({ state }) {
         </div>
         <XpBar current={xpInLevel} max={XP_PER_LEVEL} height={8} />
       </div>
-      <div className="streak-badge">{state.streak} DAY STREAK</div>
+      <div className="streak-badge px-streak"><PixelIcon name="flame" size={14} />{state.streak} DAY STREAK</div>
     </div>
   );
 }

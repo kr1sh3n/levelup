@@ -1,83 +1,89 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
   <defs>
-    <!-- background red gradient -->
-    <radialGradient id="bg" cx="50%" cy="38%" r="75%">
-      <stop offset="0" stop-color="#9b1c1c"/>
-      <stop offset="0.55" stop-color="#5e0f0f"/>
-      <stop offset="1" stop-color="#220404"/>
+    <radialGradient id="vig" cx="50%" cy="40%" r="78%">
+      <stop offset="0" stop-color="#3a0e16"/>
+      <stop offset="0.6" stop-color="#1a060e"/>
+      <stop offset="1" stop-color="#07030a"/>
     </radialGradient>
-
-    <!-- bright accent for the mark -->
-    <linearGradient id="accent" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#fca5a5"/>
-      <stop offset="0.5" stop-color="#ef4444"/>
-      <stop offset="1" stop-color="#991b1b"/>
-    </linearGradient>
-
-    <!-- grunge noise texture -->
-    <filter id="grunge" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="3" seed="7" result="n"/>
-      <feColorMatrix in="n" type="matrix"
-        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.4 1.1" result="a"/>
-    </filter>
-
-    <!-- coarse blotches for worn areas -->
-    <filter id="blotch" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="2" seed="3" result="n"/>
-      <feColorMatrix in="n" type="matrix"
-        values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -1.1 0.9" result="a"/>
-    </filter>
-
-    <!-- rough/distressed edges for the mark -->
-    <filter id="rough" x="-20%" y="-20%" width="140%" height="140%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.045" numOctaves="3" seed="11" result="t"/>
-      <feDisplacementMap in="SourceGraphic" in2="t" scale="9" xChannelSelector="R" yChannelSelector="G"/>
-    </filter>
-
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="10" result="b"/>
-      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-    </filter>
-
+    <radialGradient id="glow" cx="50%" cy="46%" r="42%">
+      <stop offset="0" stop-color="#ff2b4a" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ff2b4a" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="scan" patternUnits="userSpaceOnUse" width="6" height="4">
+      <rect width="6" height="2" fill="#000000" opacity="0.32"/>
+    </pattern>
     <clipPath id="round"><rect width="512" height="512" rx="112"/></clipPath>
   </defs>
 
   <g clip-path="url(#round)">
-    <!-- base -->
-    <rect width="512" height="512" fill="url(#bg)"/>
-
-    <!-- worn blotches (darken) -->
-    <rect width="512" height="512" filter="url(#blotch)" fill="#1a0303" opacity="0.55"/>
-
-    <!-- fine grit (lighten + darken speckle) -->
-    <rect width="512" height="512" filter="url(#grunge)" fill="#000000" opacity="0.45"/>
-    <rect width="512" height="512" filter="url(#grunge)" fill="#ff6b6b" opacity="0.10"/>
-
-    <!-- scratches -->
-    <g stroke="#2a0505" stroke-width="2" opacity="0.5">
-      <line x1="40" y1="120" x2="470" y2="150"/>
-      <line x1="20" y1="360" x2="500" y2="330"/>
-      <line x1="90" y1="460" x2="420" y2="430"/>
-    </g>
-    <g stroke="#ff8a8a" stroke-width="1.5" opacity="0.18">
-      <line x1="60" y1="200" x2="450" y2="225"/>
-      <line x1="30" y1="290" x2="480" y2="270"/>
-    </g>
-
-    <!-- the double-chevron mark, distressed + glowing -->
-    <g filter="url(#glow)">
-      <g filter="url(#rough)" stroke="url(#accent)" stroke-width="44" stroke-linecap="round" stroke-linejoin="round" fill="none">
-        <polyline points="140,300 256,186 372,300"/>
-        <polyline points="140,388 256,274 372,388"/>
-      </g>
-    </g>
-
-    <!-- vignette -->
-    <rect width="512" height="512" fill="url(#bg)" opacity="0"/>
-    <radialGradient id="vig" cx="50%" cy="50%" r="62%">
-      <stop offset="0.6" stop-color="#000000" stop-opacity="0"/>
-      <stop offset="1" stop-color="#000000" stop-opacity="0.55"/>
-    </radialGradient>
     <rect width="512" height="512" fill="url(#vig)"/>
+    <ellipse cx="256" cy="250" rx="180" ry="200" fill="url(#glow)"/>
+
+    <g fill="#15101b">
+      <rect x="196" y="40" width="16" height="28"/>
+      <rect x="238" y="32" width="18" height="36"/>
+      <rect x="286" y="42" width="14" height="26"/>
+      <rect x="322" y="52" width="14" height="18"/>
+      <rect x="160" y="56" width="14" height="44"/>
+      <rect x="188" y="66" width="136" height="34"/>
+      <rect x="154" y="100" width="204" height="34"/>
+      <rect x="120" y="134" width="272" height="34"/>
+      <rect x="86" y="168" width="34" height="34"/>
+      <rect x="120" y="168" width="272" height="34"/>
+      <rect x="392" y="168" width="34" height="34"/>
+      <rect x="120" y="202" width="34" height="102"/>
+      <rect x="358" y="202" width="34" height="102"/>
+    </g>
+
+    <g fill="#eab07e">
+      <rect x="154" y="202" width="204" height="34"/>
+      <rect x="154" y="236" width="204" height="34"/>
+      <rect x="154" y="270" width="204" height="34"/>
+      <rect x="188" y="304" width="136" height="34"/>
+      <rect x="222" y="338" width="102" height="34"/>
+      <rect x="256" y="372" width="68" height="40"/>
+    </g>
+    <g fill="#c9895a">
+      <rect x="154" y="288" width="204" height="16"/>
+      <rect x="222" y="354" width="102" height="18"/>
+    </g>
+
+    <g fill="#15101b">
+      <rect x="154" y="202" width="30" height="22"/>
+      <rect x="222" y="202" width="30" height="30"/>
+      <rect x="290" y="202" width="30" height="22"/>
+      <rect x="154" y="226" width="54" height="12"/>
+      <rect x="304" y="226" width="54" height="12"/>
+      <rect x="158" y="238" width="50" height="22"/>
+      <rect x="304" y="238" width="50" height="22"/>
+    </g>
+    <g fill="#ff2b4a">
+      <rect x="162" y="242" width="13" height="9"/>
+      <rect x="308" y="242" width="13" height="9"/>
+    </g>
+
+    <rect x="330" y="200" width="9" height="96" fill="#c4313a"/>
+
+    <rect x="239" y="318" width="40" height="11" fill="#7a3b2a"/>
+    <rect x="267" y="311" width="5" height="24" fill="#a83a32"/>
+    <rect x="268" y="312" width="2" height="22" fill="#cf5a4a"/>
+
+    <g fill="#23212b">
+      <rect x="120" y="406" width="272" height="34"/>
+      <rect x="120" y="440" width="272" height="46"/>
+    </g>
+    <rect x="120" y="406" width="272" height="5" fill="#36333f"/>
+    <rect x="252" y="410" width="8" height="76" fill="#131119"/>
+    <g fill="#eab07e">
+      <rect x="256" y="406" width="68" height="16"/>
+      <rect x="86" y="440" width="40" height="46"/>
+      <rect x="386" y="440" width="40" height="46"/>
+    </g>
+
+    <rect width="512" height="512" fill="url(#scan)"/>
+
+    <rect x="14" y="16" width="486" height="480" rx="100" fill="none" stroke="#22e0ff" stroke-width="3" opacity="0.5"/>
+    <rect x="22" y="16" width="486" height="480" rx="100" fill="none" stroke="#ff3df0" stroke-width="3" opacity="0.5"/>
+    <rect x="18" y="16" width="486" height="480" rx="100" fill="none" stroke="#ff2b4a" stroke-width="5"/>
   </g>
 </svg>

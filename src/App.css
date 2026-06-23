@@ -1,24 +1,24 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg: #0a0606;
-  --surface: rgba(28, 18, 18, 0.72);
-  --surface-solid: #160d0d;
-  --surface2: rgba(38, 22, 22, 0.6);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.12);
-  --purple: #dc2626;
-  --purple-light: #ef4444;
-  --purple-bright: #fca5a5;
-  --purple-glow: rgba(220, 38, 38, 0.45);
-  --text: #f4f3f8;
-  --text-muted: #8b8b9a;
-  --orange: #fb923c;
-  --blue: #60a5fa;
-  --pink: #f472b6;
-  --green: #4ade80;
-  --font-display: 'Orbitron', sans-serif;
-  --font-body: 'Rajdhani', sans-serif;
+  --bg: #07050b;
+  --surface: rgba(22, 10, 16, 0.82);
+  --surface-solid: #140a10;
+  --surface2: rgba(30, 12, 20, 0.72);
+  --border: rgba(255, 60, 90, 0.18);
+  --border-strong: rgba(255, 60, 90, 0.4);
+  --purple: #ff1f38;
+  --purple-light: #ff4d5a;
+  --purple-bright: #ff6b6b;
+  --purple-glow: rgba(255, 31, 56, 0.62);
+  --text: #ffeef0;
+  --text-muted: #b08a92;
+  --orange: #ff9f1c;
+  --blue: #2bd9ff;
+  --pink: #ff3df0;
+  --green: #39ff77;
+  --font-display: 'Press Start 2P', 'Orbitron', sans-serif;
+  --font-body: 'VT323', 'Rajdhani', monospace;
 }
 
 html, body, #root { height: 100%; }
@@ -30,9 +30,9 @@ body {
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   background-image:
-    radial-gradient(circle at 20% 0%, rgba(220, 38, 38, 0.18), transparent 45%),
-    radial-gradient(circle at 85% 20%, rgba(244, 63, 94, 0.1), transparent 40%),
-    radial-gradient(circle at 50% 120%, rgba(220, 38, 38, 0.12), transparent 50%);
+    radial-gradient(circle at 20% 0%, rgba(255, 36, 52, 0.24), transparent 48%),
+    radial-gradient(circle at 85% 16%, rgba(196, 18, 36, 0.18), transparent 42%),
+    radial-gradient(circle at 50% 120%, rgba(255, 36, 52, 0.18), transparent 52%);
   background-attachment: fixed;
 }
 
@@ -1279,3 +1279,128 @@ body {
   cursor: pointer;
 }
 .reminder-time:focus { outline: none; border-color: var(--purple); }
+
+/* ═══════════════════ 90s ARCADE / VHS THEME ═══════════════════ */
+
+/* readability bump — VT323 runs small */
+.task-label { font-size: 20px; }
+.task-xp { font-size: 15px; letter-spacing: 0; }
+.skill-name, .quest-label, .meal-name, .exercise-name,
+.builder-name, .pr-record-name, .rest-day-desc, .backup-note { font-size: 19px; }
+.quest-progress, .exercise-target, .exercise-last, .meal-macros,
+.macro-head, .skill-lvl, .pr-line, .level-title, .xp-bar-label,
+.cal-sub, .day1-label, .overload-desc, .lift-progress-text { font-size: 16px; }
+
+/* Press Start 2P is wide — tame letter-spacing + sizes on display text */
+.card-title { font-size: 10px; letter-spacing: 1px; line-height: 1.4; }
+.section-head { font-size: 10px; letter-spacing: 1px; }
+.level-badge { font-size: 10px; letter-spacing: 0; padding: 5px 9px; }
+.streak-badge { font-size: 9px; letter-spacing: 0; padding: 6px 11px; gap: 7px; }
+.boss-title { font-size: 13px; letter-spacing: 1px; line-height: 1.4; }
+.overload-title { font-size: 11px; letter-spacing: 1px; line-height: 1.5; }
+.claim-btn, .milestone-btn, .add-set-btn, .rest-btn, .rest-preset, .slot-tab, .day1-btn { letter-spacing: 0; }
+.claim-btn, .milestone-btn { font-size: 10px; line-height: 1.5; }
+
+/* big numbers / timers → VT323 (crisp + arcade) */
+.stat-value, .cal-big, .rest-display, .profile-avatar, .workout-type, .tab-btn {
+  font-family: var(--font-body);
+}
+.stat-value { font-size: 34px; letter-spacing: 1px; }
+.cal-big { font-size: 46px; }
+.rest-display { font-size: 60px; letter-spacing: 2px; }
+.profile-avatar { font-size: 40px; }
+.workout-type { font-size: 30px; letter-spacing: 1px; }
+
+/* arcade logo with chromatic-aberration glitch */
+.logo {
+  background: none;
+  -webkit-text-fill-color: #ff1f33;
+  color: #ff1f33;
+  font-size: 18px;
+  letter-spacing: 1px;
+  text-shadow: 0 0 14px rgba(255,31,51,0.75), 2px 0 #8a0010, -2px 0 #ff5a5a;
+  animation: glitch 4s steps(1) infinite;
+}
+@keyframes glitch {
+  0%, 90%, 100% { text-shadow: 0 0 14px rgba(255,31,51,0.75), 2px 0 #8a0010, -2px 0 #ff5a5a; transform: translate(0,0); }
+  91% { text-shadow: 0 0 14px rgba(255,31,51,0.75), -3px 0 #8a0010, 3px 0 #ff5a5a; transform: translate(1px,-1px); }
+  93% { text-shadow: 0 0 14px rgba(255,31,51,0.75), 3px 0 #ff5a5a, -3px 0 #8a0010; transform: translate(-2px,1px); }
+  95% { text-shadow: 0 0 14px rgba(255,31,51,0.75), 2px 0 #8a0010, -2px 0 #ff5a5a; transform: translate(1px,0); }
+}
+
+/* milestone + profile display sizes */
+.milestone-title { font-size: 16px; letter-spacing: 1px; line-height: 1.5; -webkit-text-fill-color: #ff2b3d; background: none; color: #ff2b3d; text-shadow: 0 0 12px rgba(255,31,51,0.7), 2px 0 #8a0010, -2px 0 #ff5a5a; }
+.profile-name { font-size: 13px; letter-spacing: 1px; line-height: 1.6; -webkit-text-fill-color: var(--purple-bright); background: none; color: var(--purple-bright); }
+
+/* tabs: VT323, readable, fits 6 */
+.tab-btn { font-size: 15px; letter-spacing: 1px; }
+
+/* ── pixel borders + hard shadows on panels ── */
+.card, .task-item, .quest-item, .stat-card, .exercise-card, .meal-item, .builder-row, .set-row {
+  border-radius: 4px;
+  border-width: 2px;
+  box-shadow: 4px 4px 0 rgba(0,0,0,0.55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.card:hover, .task-item:hover:not(.done), .quest-item:hover, .stat-card:hover {
+  box-shadow: 5px 5px 0 rgba(0,0,0,0.6), 0 0 18px var(--purple-glow);
+  transform: translate(-1px,-1px);
+}
+.card { border-color: var(--border-strong); }
+
+/* sharp pixel edges on bars / checks / badges */
+.xp-bar, .skill-bar, .quest-bar, .heatmap-day, .task-check, .done-check,
+.level-badge, .tag-badge, .pr-tag, .rest-preset, .day1-btn, .meal-input,
+.rest-btn, .add-set-btn, .claim-btn, .milestone-btn, .slot-tab { border-radius: 2px; }
+
+/* segmented pixel XP bar */
+.xp-bar { border-radius: 2px; height: 14px; }
+.xp-bar-fill {
+  background: repeating-linear-gradient(90deg, var(--purple) 0 12px, rgba(0,0,0,0.6) 12px 16px);
+  border-radius: 0;
+}
+.skill-bar-fill, .quest-bar-fill { border-radius: 0; }
+
+/* pixel button press */
+.claim-btn, .add-set-btn, .milestone-btn, .rest-btn.primary {
+  box-shadow: 3px 3px 0 rgba(0,0,0,0.6);
+  border-radius: 3px;
+}
+.claim-btn:active, .add-set-btn:active, .milestone-btn:active, .rest-btn.primary:active {
+  box-shadow: 1px 1px 0 rgba(0,0,0,0.6);
+  transform: translate(2px,2px);
+}
+
+/* ── CRT scanlines + halftone grain overlay ── */
+.app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9;
+  background:
+    repeating-linear-gradient(rgba(0,0,0,0.30) 0 1px, transparent 1px 3px),
+    radial-gradient(rgba(255,255,255,0.05) 0.5px, transparent 0.6px);
+  background-size: 100% 3px, 3px 3px;
+  animation: flicker 7s infinite steps(60);
+  mix-blend-mode: multiply;
+}
+@keyframes flicker {
+  0%, 96%, 100% { opacity: 0.9; }
+  97% { opacity: 0.75; }
+  98% { opacity: 1; }
+  99% { opacity: 0.82; }
+}
+
+/* warm CRT vignette */
+.app { box-shadow: inset 0 0 120px rgba(0,0,0,0.7), inset 0 0 40px rgba(255,43,74,0.06); }
+
+/* neon section diamond + accent already use currentColor — keep */
+
+/* pixel-art glyphs replace the CSS diamond / dot */
+.section-head.px-head::before { display: none; }
+.streak-badge.px-streak::before { display: none; }
+.section-head.px-head { gap: 9px; }
+.section-head.px-head svg { filter: drop-shadow(0 0 4px currentColor); }
+.streak-badge.px-streak svg { filter: drop-shadow(0 0 4px currentColor); }
