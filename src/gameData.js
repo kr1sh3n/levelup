@@ -32,148 +32,14 @@ export function getStreakMultiplier(streak) {
   return 1.0;
 }
 
-// skill: fitness | mind | creator | health
-export const TASKS_DEFINITION = [
-  {
-    id: "water",
-    label: "Drink 3L of Water",
-    xp: 15,
-    skill: "health",
-    days: "daily",
-  },
-  {
-    id: "read",
-    label: "Read for 30 mins",
-    xp: 25,
-    skill: "mind",
-    days: "daily",
-  },
-  {
-    id: "skincare",
-    label: "Skincare Routine",
-    xp: 10,
-    skill: "health",
-    days: "daily",
-  },
-  {
-    id: "coding",
-    label: "Practice Coding (2hr)",
-    xp: 50,
-    skill: "mind",
-    days: "daily",
-  },
-  {
-    id: "youtube",
-    label: "Script/Record/Edit Video",
-    xp: 60,
-    skill: "creator",
-    days: "every2",
-  },
-  {
-    id: "reel",
-    label: "Upload a Reel",
-    xp: 30,
-    skill: "creator",
-    days: "daily",
-  },
-  {
-    id: "morningSkincare",
-    label: "Morning Skincare",
-    xp: 10,
-    skill: "health",
-    days: "daily",
-    steps: "morning",
-  },
-  {
-    id: "nightSkincare",
-    label: "Night Skincare",
-    xp: 10,
-    skill: "health",
-    days: "daily",
-    steps: "night",
-  },
-  {
-    id: "creatine",
-    label: "Creatine — 5g",
-    xp: 10,
-    skill: "health",
-    days: "daily",
-  },
-  // NOTE: Lifting is no longer a simple tap-task. It's driven by the routine
-  // system in the Gym tab (see LIFT_PATTERN below) and surfaces on Today as a
-  // dedicated Lifting card that completes when all exercises are checked off.
-];
+// ── XP rules ─────────────────────────────────────────────────────────────────
+export const GOAL_XP = 20; // per completed personal goal (× streak multiplier)
+export const LIFT_XP = 40; // per finished workout (× streak multiplier)
+export const MEAL_LOG_XP = 5; // per meal logged
+export const PR_XP = 25; // per new personal record
+export const BOSS_XP = 500; // Sunday: every goal due today completed
 
-// ── Skincare step displays ────────────────────────────────────────────────────
-export const MORNING_SKINCARE_STEPS = [
-  { label: "Cleanse" },
-  { label: "Moisturizer" },
-  { label: "SPF50 Sunscreen", must: true }, // non-skippable — highlighted
-];
-
-// Night treatment by weekday (0=Sun .. 6=Sat)
-export const NIGHT_TREATMENT = {
-  0: "Calamine (oil control)",
-  1: "Centella serum",
-  2: "Centella serum",
-  3: "Salicylic acid",
-  4: "Centella serum",
-  5: "Centella serum",
-  6: "Salicylic acid",
-};
-
-export function nightSkincareSteps(dateObj) {
-  return [
-    { label: "Cleanse" },
-    { label: NIGHT_TREATMENT[dateObj.getDay()], treatment: true },
-    { label: "Moisturizer" },
-  ];
-}
-
-// Resolve a task's ordered steps for a given date (or null if it has none).
-export function stepsForTask(task, dateObj) {
-  if (task.steps === "morning") return MORNING_SKINCARE_STEPS;
-  if (task.steps === "night") return nightSkincareSteps(dateObj);
-  return null;
-}
-
-// ── Reminders ─────────────────────────────────────────────────────────────────
-// Habits that get a daily reminder. Times are "HH:MM" (24h). Editable in-app.
-export const REMINDER_HABITS = [
-  { id: "morningSkincare", label: "Morning Skincare", default: "08:00", desc: "Cleanse → Moisturizer → SPF50 Sunscreen" },
-  { id: "creatine", label: "Creatine (5g)", default: "08:00", desc: "Take 5g creatine with breakfast" },
-  { id: "lift", label: "Lifting", default: "17:00", desc: "Today's training session (see app)" },
-  { id: "nightSkincare", label: "Night Skincare", default: "22:00", desc: "Cleanse → today's treatment → Moisturizer" },
-];
-
-export const DEFAULT_REMINDERS = REMINDER_HABITS.reduce((acc, h) => {
-  acc[h.id] = h.default;
-  return acc;
-}, {});
-
-// ── Lifting cycle ────────────────────────────────────────────────────────────
-// A repeating 7-day Upper/Lower split. Index 0 = "Day 1" (the first Upper day).
-export const LIFT_PATTERN = ["upper", "lower", "rest", "upper", "lower", "rest", "rest"];
-
-export const LIFT_XP = 40; // awarded when the whole day's lifting is complete
-
-// Given a date and which weekday is Day 1 (0=Sun..6=Sat), return 'upper'|'lower'|'rest'.
-export function liftTypeForDate(dateObj, day1Weekday) {
-  const offset = ((dateObj.getDay() - day1Weekday) % 7 + 7) % 7;
-  return LIFT_PATTERN[offset];
-}
-
-export const LIFT_TYPE_LABEL = { upper: "Upper Day", lower: "Lower Day", rest: "Rest Day" };
-
-// Per-tag training cue.
-export const LIFT_CUES = {
-  compound: "Leave 1–2 reps in reserve",
-  isolation: "Take to failure",
-};
-
-export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-export const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
+// ── Skills ───────────────────────────────────────────────────────────────────
 export const SKILL_COLORS = {
   fitness: { color: "#f97316", glow: "rgba(249,115,22,0.4)" },
   mind: { color: "#3b82f6", glow: "rgba(59,130,246,0.4)" },
@@ -188,76 +54,9 @@ export const SKILL_LABELS = {
   health: "Health",
 };
 
-// Weekly quests definition — evaluated against weeklyStats
-export const WEEKLY_QUESTS = [
-  {
-    id: "wq_workouts",
-    label: "Complete all 4 workouts this week",
-    xp: 300,
-    check: (s) => (s.workoutsCompleted || 0) >= 4,
-    progress: (s) => Math.min(s.workoutsCompleted || 0, 4),
-    total: 4,
-  },
-  {
-    id: "wq_coding",
-    label: "Code every day this week (7 days)",
-    xp: 250,
-    check: (s) => (s.codingDays || 0) >= 7,
-    progress: (s) => Math.min(s.codingDays || 0, 7),
-    total: 7,
-  },
-  {
-    id: "wq_water",
-    label: "Hit 3L water goal 5 days",
-    xp: 150,
-    check: (s) => (s.waterDays || 0) >= 5,
-    progress: (s) => Math.min(s.waterDays || 0, 5),
-    total: 5,
-  },
-  {
-    id: "wq_reading",
-    label: "Read 5 days this week",
-    xp: 200,
-    check: (s) => (s.readingDays || 0) >= 5,
-    progress: (s) => Math.min(s.readingDays || 0, 5),
-    total: 5,
-  },
-  {
-    id: "wq_youtube",
-    label: "Post 2 YouTube videos this week",
-    xp: 180,
-    check: (s) => (s.youtubeVideos || 0) >= 2,
-    progress: (s) => Math.min(s.youtubeVideos || 0, 2),
-    total: 2,
-  },
-  {
-    id: "wq_reels",
-    label: "Upload a reel every day this week (7 days)",
-    xp: 220,
-    check: (s) => s.reelDays >= 7,
-    progress: (s) => Math.min(s.reelDays || 0, 7),
-    total: 7,
-  },
-];
+// ── Calendar ─────────────────────────────────────────────────────────────────
+export const WEEKDAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+export const WEEKDAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-export function getTasksForDay(dateObj, every2Seed) {
-  const dow = dateObj.getDay(); // 0=Sun
-  return TASKS_DEFINITION.filter((t) => {
-    if (t.days === "daily") return true;
-    if (t.days === "every2") {
-      // use a stable seed: day-of-year parity
-      const dayOfYear = Math.floor(
-        (dateObj - new Date(dateObj.getFullYear(), 0, 0)) / 86400000
-      );
-      return dayOfYear % 2 === every2Seed % 2;
-    }
-    if (Array.isArray(t.days)) return t.days.includes(dow);
-    return false;
-  });
-}
-
-export const BOSS_DAY = 0; // Sunday
-
-export function isBossDay(dateObj) {
-  return dateObj.getDay() === BOSS_DAY;
-}
+// ── Meals ────────────────────────────────────────────────────────────────────
+export const MEAL_NAME_SUGGESTIONS = ["Breakfast", "Lunch", "Snacks", "Dinner"];

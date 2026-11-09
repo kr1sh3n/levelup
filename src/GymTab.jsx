@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { LIFT_TYPE_LABEL, LIFT_CUES, LIFT_PATTERN, WEEKDAY_SHORT } from "./gameData";
+import { WEEKDAY_SHORT, LIFT_XP, getStreakMultiplier } from "./gameData";
+import { THEMES, themeOf } from "./themes";
 
 // ── Rest timer ────────────────────────────────────────────────────────────────
 function beep() {
@@ -31,20 +32,28 @@ function fmt(s) {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
-function RestTimer({ startSignal }) {
+// `signal` changes ({ n, sec }) each time a set is logged → auto-start with that exercise's rest.
+function RestTimer({ signal }) {
   const [duration, setDuration] = useState(90);
   const [timeLeft, setTimeLeft] = useState(90);
   const [running, setRunning] = useState(false);
   const [justDone, setJustDone] = useState(false);
   const durationRef = useRef(duration);
-  durationRef.current = duration;
+  useEffect(() => {
+    durationRef.current = duration;
+  }, [duration]);
 
   useEffect(() => {
-    if (startSignal === 0) return;
-    setTimeLeft(durationRef.current);
-    setJustDone(false);
-    setRunning(true);
-  }, [startSignal]);
+    if (!signal.n) return;
+    const sec = signal.sec > 0 ? signal.sec : durationRef.current;
+    const t = setTimeout(() => {
+      setDuration(sec);
+      setTimeLeft(sec);
+      setJustDone(false);
+      setRunning(true);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [signal]);
 
   useEffect(() => {
     if (!running) return;
@@ -97,108 +106,69 @@ function RestTimer({ startSignal }) {
   );
 }
 
-// ── Cycle editor ──────────────────────────────────────────────────────────────
-function CycleEditor({ store }) {
-  const { liftDay1, setLiftDay1 } = store;
-  const [open, setOpen] = useState(false);
-  const todayDow = new Date().getDay();
-
-  return (
-    <div className="card">
-      <div className="card-title cycle-head">
-        <span>Training Cycle</span>
-        <span className="link-btn" onClick={() => setOpen(!open)}>{open ? "Close" : "Edit"}</span>
-      </div>
-      <div className="cycle-row">
-        {WEEKDAY_SHORT.map((d, i) => {
-          const offset = ((i - liftDay1) % 7 + 7) % 7;
-          const type = LIFT_PATTERN[offset];
-          return (
-            <div key={i} className={`cycle-day ${type} ${i === todayDow ? "is-today" : ""}`}>
-              <span className="cycle-dow">{d}</span>
-              <span className="cycle-mark">{type === "upper" ? "U" : type === "lower" ? "L" : "·"}</span>
-            </div>
-          );
-        })}
-      </div>
-      {open && (
-        <div className="day1-picker">
-          <div className="day1-label">Day 1 (first Upper day) starts on:</div>
-          <div className="day1-btns">
-            {WEEKDAY_SHORT.map((d, i) => (
-              <button key={i} className={`day1-btn ${liftDay1 === i ? "active" : ""}`} onClick={() => setLiftDay1(i)}>
-                {d}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function targetLine(ex) {
+  const parts = [`${ex.sets} sets`];
+  if (ex.reps) parts.push(`${ex.reps} reps`);
+  if (ex.targetWeight !== "" && ex.targetWeight != null) parts.push(`${ex.targetWeight} kg`);
+  if (ex.restSec) parts.push(`rest ${fmt(ex.restSec)}`);
+  return parts.join(" · ");
 }
 
-// ── Overload banner ───────────────────────────────────────────────────────────
-function OverloadBanner({ store }) {
-  const { overloadDue, overloadLifts, dismissOverload } = store;
-  if (!overloadDue) return null;
-  return (
-    <div className="card overload-banner">
-      <div className="overload-title">PROGRESSIVE OVERLOAD WEEK</div>
-      <div className="overload-desc">Beat last week on your main lifts — add a rep or a little weight:</div>
-      {overloadLifts.map((l) => (
-        <div key={l.name} className="overload-row">
-          <span>{l.name}</span>
-          <span className="overload-target">{l.last.weight}kg × {l.last.reps}</span>
-        </div>
-      ))}
-      <button className="claim-btn ghost" onClick={dismissOverload}>GOT IT</button>
-    </div>
-  );
+function weekdaysLabel(weekdays) {
+  if (!weekdays?.length) return "Not scheduled";
+  if (weekdays.length === 7) return "Every day";
+  return [...weekdays].sort().map((d) => WEEKDAY_SHORT[d]).join(", ");
 }
 
-// ── Set row ───────────────────────────────────────────────────────────────────
-function SetRow({ set, index, onDelete }) {
+const fmtShortDate = (key) => {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+};
+
+// ── Today's session ──────────────────────────────────────────────────────────
+function SetRow({ set, index, onDelete, locked }) {
   return (
     <div className="set-row">
       <span className="set-num">Set {index + 1}</span>
       <span className="set-vol">{set.weight} kg × {set.reps}</span>
       {set.pr && <span className="pr-tag">PR</span>}
-      <button className="del-btn small" onClick={onDelete}>×</button>
+      {!locked && (
+        <button className="del-btn small" onClick={onDelete} aria-label={`Delete set ${index + 1}`}>×</button>
+      )}
     </div>
   );
 }
 
-// ── Training-day exercise card ────────────────────────────────────────────────
-function ExerciseLogCard({ ex, store, onSetAdded }) {
-  const { todayLiftLog, addLiftSet, deleteLiftSet, toggleExerciseDone, lastLiftSessionFor } = store;
+function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
+  const { addSet, deleteSet, toggleExerciseDone, lastSessionFor } = store;
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
-
-  const exLog = todayLiftLog.ex[ex.id] || { sets: [], done: false };
-  const last = lastLiftSessionFor(ex.id);
+  const locked = !!log?.completedAt;
+  const exLog = log?.ex[ex.id] || { sets: [], done: false };
+  const last = lastSessionFor(ex.id);
 
   function submit(e) {
     e.preventDefault();
-    if (!reps) return;
-    addLiftSet(ex.id, ex.name, weight, reps);
+    if (!reps || Number(reps) <= 0) return;
+    addSet(day.id, ex, weight, reps);
     setReps("");
-    onSetAdded?.();
+    onSetAdded(ex.restSec);
   }
 
   return (
-    <div className={`exercise-card ${exLog.done ? "done" : ""} ${ex.tag}`}>
+    <div className={`exercise-card ${exLog.done ? "done" : ""}`}>
       <div className="exercise-head">
         <div className="exercise-headinfo">
-          <div className="exercise-name">
-            {ex.name}
-            <span className={`tag-badge ${ex.tag}`}>{ex.tag === "compound" ? "Compound" : "Isolation"}</span>
-          </div>
-          <div className="exercise-target">{ex.targetSets} sets · {ex.repLow}–{ex.repHigh} reps</div>
-          <div className="exercise-cue">{LIFT_CUES[ex.tag]}</div>
+          <div className="exercise-name">{ex.name}</div>
+          <div className="exercise-target">{targetLine(ex)}</div>
+          {ex.notes && <div className="exercise-cue">{ex.notes}</div>}
         </div>
         <button
           className={`done-check ${exLog.done ? "on" : ""}`}
-          onClick={() => toggleExerciseDone(ex.id)}
+          onClick={() => toggleExerciseDone(day.id, ex.id)}
+          disabled={locked}
+          aria-label={exLog.done ? `Unmark ${ex.name}` : `Mark ${ex.name} done`}
           title="Mark exercise done"
         >
           {exLog.done ? "✓" : ""}
@@ -210,132 +180,375 @@ function ExerciseLogCard({ ex, store, onSetAdded }) {
       </div>
 
       {exLog.sets.map((s, i) => (
-        <SetRow key={i} set={s} index={i} onDelete={() => deleteLiftSet(ex.id, i)} />
+        <SetRow key={i} set={s} index={i} locked={locked} onDelete={() => deleteSet(day.id, ex.id, i)} />
       ))}
 
-      <form className="set-form" onSubmit={submit}>
-        <input className="meal-input small" type="number" inputMode="decimal" placeholder="kg" value={weight} onChange={(e) => setWeight(e.target.value)} />
-        <span className="set-x">×</span>
-        <input className="meal-input small" type="number" inputMode="numeric" placeholder="reps" value={reps} onChange={(e) => setReps(e.target.value)} />
-        <button type="submit" className="add-set-btn">+ SET</button>
-      </form>
+      {!locked && (
+        <form className="set-form" onSubmit={submit}>
+          <input
+            className="meal-input small"
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="0.5"
+            placeholder={ex.targetWeight !== "" && ex.targetWeight != null ? `${ex.targetWeight} kg` : "kg"}
+            value={weight}
+            onChange={(e) => setWeight(e.target.value)}
+            aria-label={`${ex.name} weight in kg`}
+          />
+          <span className="set-x">×</span>
+          <input
+            className="meal-input small"
+            type="number"
+            inputMode="numeric"
+            min="1"
+            placeholder="reps"
+            value={reps}
+            onChange={(e) => setReps(e.target.value)}
+            aria-label={`${ex.name} reps`}
+          />
+          <button type="submit" className="add-set-btn">+ SET</button>
+        </form>
+      )}
     </div>
   );
 }
 
-// ── Routine builder ───────────────────────────────────────────────────────────
-const BLANK = { name: "", tag: "compound", targetSets: 3, repLow: 8, repHigh: 12 };
+function SessionCard({ store }) {
+  const { state, activeDay, activeLog, scheduledDay, selectWorkoutDay, finishWorkout, reopenWorkout } = store;
+  const days = state.workoutPlan.days;
+  const done = !!activeLog?.completedAt;
+  const total = activeDay?.exercises.length || 0;
+  const doneCount = activeDay ? activeDay.exercises.filter((e) => activeLog?.ex[e.id]?.done).length : 0;
+  const setCount = activeLog ? Object.values(activeLog.ex).reduce((n, e) => n + e.sets.length, 0) : 0;
+  const hasProgress = setCount > 0 || doneCount > 0;
+  const xp = Math.round(LIFT_XP * getStreakMultiplier(state.streak));
+  const earnedToday = state.workoutXpDates.includes(store.today);
 
-function RoutineBuilder({ store }) {
-  const { routines, addRoutineExercise, updateRoutineExercise, removeRoutineExercise, moveRoutineExercise } = store;
-  const [type, setType] = useState("upper");
-  const [form, setForm] = useState(BLANK);
-  const list = routines[type] || [];
+  function changeDay(e) {
+    const id = e.target.value || null;
+    if (hasProgress && !window.confirm("Switching workouts clears the sets you've logged today. Continue?")) return;
+    selectWorkoutDay(id);
+  }
 
-  function add(e) {
+  const { gymImage, pixelArt } = THEMES[themeOf(state.theme)];
+
+  return (
+    <div className={`card ${gymImage ? "session-with-art" : ""}`}>
+      {gymImage && <img className={`session-art ${pixelArt ? "pixel-art wide" : ""}`} src={gymImage} alt="" />}
+      <div className="card-title">Today&apos;s Session</div>
+      <div className="workout-type">
+        {activeDay ? activeDay.name : days.some((d) => d.weekdays?.length) ? "Rest Day" : "Pick a Workout"}
+      </div>
+      {scheduledDay && activeDay?.id !== scheduledDay.id && (
+        <div className="exercise-last">Scheduled today: {scheduledDay.name}</div>
+      )}
+      {activeDay && total > 0 && (
+        <div className={`lift-progress-text ${done ? "complete" : ""}`}>
+          {done ? `✓ Workout complete — ${setCount} sets logged` : `${doneCount} / ${total} exercises done · ${setCount} sets`}
+        </div>
+      )}
+
+      {!done && (
+        <label className="field session-picker">
+          <span>Train today</span>
+          <select className="meal-input" value={activeDay?.id || ""} onChange={changeDay}>
+            <option value="">No workout today</option>
+            {days.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+        </label>
+      )}
+
+      {activeDay && total > 0 && !done && (
+        <button className="claim-btn" disabled={!hasProgress} onClick={() => finishWorkout(activeDay.id)}>
+          {hasProgress ? (earnedToday ? "FINISH WORKOUT" : `FINISH WORKOUT (+${xp} XP)`) : "LOG A SET TO FINISH"}
+        </button>
+      )}
+      {done && (
+        <button className="claim-btn ghost" onClick={reopenWorkout}>REOPEN TO EDIT</button>
+      )}
+    </div>
+  );
+}
+
+// ── Plan builder ─────────────────────────────────────────────────────────────
+const BLANK_EX = { name: "", sets: 3, reps: "8-12", targetWeight: "", restSec: 90, notes: "" };
+
+function ExerciseForm({ initial = BLANK_EX, submitLabel, onSubmit, onCancel }) {
+  const [form, setForm] = useState(initial);
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+
+  function submit(e) {
     e.preventDefault();
     if (!form.name.trim()) return;
-    addRoutineExercise(type, form);
-    setForm(BLANK);
+    onSubmit(form);
+  }
+
+  return (
+    <form className="builder-form edit-form inset" onSubmit={submit}>
+      <input className="meal-input" placeholder="Exercise name *" value={form.name} onChange={set("name")} maxLength={60} autoFocus required />
+      <div className="form-grid four">
+        <label className="field">
+          <span>Sets</span>
+          <input className="meal-input" type="number" inputMode="numeric" min="1" max="20" value={form.sets} onChange={set("sets")} />
+        </label>
+        <label className="field">
+          <span>Reps</span>
+          <input className="meal-input" placeholder="8-12" value={form.reps} onChange={set("reps")} maxLength={12} />
+        </label>
+        <label className="field">
+          <span>Target kg</span>
+          <input className="meal-input" type="number" inputMode="decimal" min="0" step="0.5" placeholder="—" value={form.targetWeight} onChange={set("targetWeight")} />
+        </label>
+        <label className="field">
+          <span>Rest (s)</span>
+          <input className="meal-input" type="number" inputMode="numeric" min="0" max="900" step="15" value={form.restSec} onChange={set("restSec")} />
+        </label>
+      </div>
+      <input className="meal-input" placeholder="Notes (form cues, tempo, machine settings…)" value={form.notes} onChange={set("notes")} maxLength={200} />
+      <div className="form-actions">
+        <button type="submit" className="claim-btn">{submitLabel}</button>
+        <button type="button" className="claim-btn ghost" onClick={onCancel}>CANCEL</button>
+      </div>
+    </form>
+  );
+}
+
+function DayEditor({ day, store, onClose }) {
+  const { updateDay, addExercise, updateExercise, deleteExercise, moveExercise } = store;
+  const [name, setName] = useState(day.name);
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const otherDays = store.state.workoutPlan.days.filter((d) => d.id !== day.id);
+
+  function toggleWeekday(i) {
+    const has = day.weekdays.includes(i);
+    updateDay(day.id, { weekdays: has ? day.weekdays.filter((d) => d !== i) : [...day.weekdays, i].sort() });
+  }
+
+  return (
+    <div className="day-editor">
+      <form
+        className="rename-row"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name.trim()) updateDay(day.id, { name: name.trim() });
+        }}
+      >
+        <input className="meal-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Workout day name" />
+        <button type="submit" className="add-set-btn" disabled={!name.trim() || name.trim() === day.name}>RENAME</button>
+      </form>
+
+      <div className="day1-label">Scheduled on (optional — leave empty to train it whenever you like)</div>
+      <div className="day1-btns">
+        {WEEKDAY_SHORT.map((d, i) => {
+          const clash = otherDays.find((o) => o.weekdays.includes(i));
+          return (
+            <button
+              key={i}
+              type="button"
+              className={`day1-btn ${day.weekdays.includes(i) ? "active" : ""}`}
+              onClick={() => toggleWeekday(i)}
+              title={clash ? `Also scheduled: ${clash.name}` : undefined}
+            >
+              {d}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="day1-label">Exercises</div>
+      {day.exercises.length === 0 && !adding && <div className="builder-empty">No exercises yet — add your first one.</div>}
+      {day.exercises.map((ex, idx) =>
+        editingId === ex.id ? (
+          <ExerciseForm
+            key={ex.id}
+            initial={{ ...ex, targetWeight: ex.targetWeight ?? "" }}
+            submitLabel="SAVE EXERCISE"
+            onSubmit={(f) => { updateExercise(day.id, ex.id, f); setEditingId(null); }}
+            onCancel={() => setEditingId(null)}
+          />
+        ) : (
+          <div key={ex.id} className="builder-row">
+            <div className="builder-arrows">
+              <button onClick={() => moveExercise(day.id, ex.id, -1)} disabled={idx === 0} aria-label={`Move ${ex.name} up`}>▲</button>
+              <button onClick={() => moveExercise(day.id, ex.id, 1)} disabled={idx === day.exercises.length - 1} aria-label={`Move ${ex.name} down`}>▼</button>
+            </div>
+            <div className="builder-main">
+              <div className="builder-name">{ex.name}</div>
+              <div className="builder-meta">{targetLine(ex)}</div>
+              {ex.notes && <div className="builder-meta notes">{ex.notes}</div>}
+            </div>
+            <button className="icon-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`} title="Edit">✎</button>
+            <button
+              className="del-btn small"
+              onClick={() => window.confirm(`Delete "${ex.name}"?`) && deleteExercise(day.id, ex.id)}
+              aria-label={`Delete ${ex.name}`}
+              title="Delete"
+            >
+              ×
+            </button>
+          </div>
+        )
+      )}
+
+      {adding ? (
+        <ExerciseForm
+          submitLabel="ADD EXERCISE"
+          onSubmit={(f) => { addExercise(day.id, f); setAdding(false); }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <button className="claim-btn ghost" onClick={() => { setAdding(true); setEditingId(null); }}>+ ADD EXERCISE</button>
+      )}
+      <button className="link-btn done-link" onClick={onClose}>Done editing {day.name}</button>
+    </div>
+  );
+}
+
+function PlanBuilder({ store }) {
+  const { state, addDay, deleteDay, moveDay, clearPlan } = store;
+  const days = state.workoutPlan.days;
+  const [openId, setOpenId] = useState(null);
+  const [newDay, setNewDay] = useState("");
+
+  function add(name) {
+    if (!name.trim()) return;
+    addDay(name);
+    setNewDay("");
   }
 
   return (
     <div className="card">
-      <div className="card-title">Routine Builder</div>
-      <div className="slot-tabs">
-        <button className={`slot-tab ${type === "upper" ? "active" : ""}`} onClick={() => setType("upper")}>Upper Day</button>
-        <button className={`slot-tab ${type === "lower" ? "active" : ""}`} onClick={() => setType("lower")}>Lower Day</button>
-      </div>
+      <div className="card-title">My Workout Plan</div>
+      {days.length === 0 && (
+        <div className="builder-empty">
+          Your plan, your rules. Add as many workout days as you like, name them anything, fill them with
+          your own exercises, and optionally pin them to weekdays — or just pick one whenever you train.
+        </div>
+      )}
 
-      {list.length === 0 && <div className="builder-empty">No exercises yet. Add your first {type} lift below.</div>}
-
-      {list.map((ex, idx) => (
-        <div key={ex.id} className="builder-row">
-          <div className="builder-arrows">
-            <button onClick={() => moveRoutineExercise(type, ex.id, -1)} disabled={idx === 0}>▲</button>
-            <button onClick={() => moveRoutineExercise(type, ex.id, 1)} disabled={idx === list.length - 1}>▼</button>
+      {days.map((day, idx) => (
+        <div key={day.id} className={`day-block ${openId === day.id ? "open" : ""}`}>
+          <div className="builder-row">
+            <div className="builder-arrows">
+              <button onClick={() => moveDay(day.id, -1)} disabled={idx === 0} aria-label={`Move ${day.name} up`}>▲</button>
+              <button onClick={() => moveDay(day.id, 1)} disabled={idx === days.length - 1} aria-label={`Move ${day.name} down`}>▼</button>
+            </div>
+            <button className="builder-main as-button" onClick={() => setOpenId(openId === day.id ? null : day.id)}>
+              <div className="builder-name">{day.name}</div>
+              <div className="builder-meta">
+                {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"} · {weekdaysLabel(day.weekdays)}
+              </div>
+            </button>
+            <button className="icon-btn" onClick={() => setOpenId(openId === day.id ? null : day.id)} aria-label={`Edit ${day.name}`} title="Edit">
+              {openId === day.id ? "▾" : "✎"}
+            </button>
+            <button
+              className="del-btn small"
+              onClick={() =>
+                window.confirm(`Delete "${day.name}" and its ${day.exercises.length} exercises? Past workout history is kept.`) &&
+                deleteDay(day.id)
+              }
+              aria-label={`Delete ${day.name}`}
+              title="Delete"
+            >
+              ×
+            </button>
           </div>
-          <div className="builder-main">
-            <div className="builder-name">{ex.name}</div>
-            <div className="builder-meta">{ex.targetSets} × {ex.repLow}–{ex.repHigh}</div>
-          </div>
-          <button
-            className={`tag-toggle ${ex.tag}`}
-            onClick={() => updateRoutineExercise(type, ex.id, { tag: ex.tag === "compound" ? "isolation" : "compound" })}
-            title="Toggle Compound / Isolation"
-          >
-            {ex.tag === "compound" ? "Comp" : "Iso"}
-          </button>
-          <button className="del-btn small" onClick={() => removeRoutineExercise(type, ex.id)}>×</button>
+          {openId === day.id && <DayEditor day={day} store={store} onClose={() => setOpenId(null)} />}
         </div>
       ))}
 
-      <form className="builder-form" onSubmit={add}>
-        <input className="meal-input" placeholder="Exercise name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        <div className="builder-form-row">
-          <button type="button" className={`tag-toggle ${form.tag}`} onClick={() => setForm({ ...form, tag: form.tag === "compound" ? "isolation" : "compound" })}>
-            {form.tag === "compound" ? "Compound" : "Isolation"}
-          </button>
-          <label className="mini-field">
-            <span>Sets</span>
-            <input type="number" value={form.targetSets} onChange={(e) => setForm({ ...form, targetSets: e.target.value })} />
-          </label>
-          <label className="mini-field">
-            <span>Reps</span>
-            <input type="number" value={form.repLow} onChange={(e) => setForm({ ...form, repLow: e.target.value })} />
-            <span className="dash">–</span>
-            <input type="number" value={form.repHigh} onChange={(e) => setForm({ ...form, repHigh: e.target.value })} />
-          </label>
-        </div>
-        <button type="submit" className="claim-btn">ADD EXERCISE</button>
+      <form className="rename-row" onSubmit={(e) => { e.preventDefault(); add(newDay); }}>
+        <input
+          className="meal-input"
+          placeholder={days.length ? "Add another workout day" : "Name your first workout day"}
+          value={newDay}
+          onChange={(e) => setNewDay(e.target.value)}
+          maxLength={40}
+          aria-label="New workout day name"
+        />
+        <button type="submit" className="add-set-btn" disabled={!newDay.trim()}>+ DAY</button>
       </form>
+      {days.length > 0 && (
+        <button
+          className="link-btn done-link"
+          onClick={() =>
+            window.confirm(
+              `Clear your whole plan (${days.length} workout day${days.length === 1 ? "" : "s"}) and start from scratch? Workout history and PRs are kept.`
+            ) && clearPlan()
+          }
+        >
+          Clear plan &amp; start from scratch
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WorkoutHistory({ state }) {
+  const entries = Object.entries(state.workoutLogs)
+    .filter(([, l]) => l.completedAt)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, 10);
+  if (!entries.length) return null;
+  return (
+    <div className="card">
+      <div className="card-title">Workout History</div>
+      {entries.map(([date, l]) => {
+        const sets = Object.values(l.ex).flatMap((e) => e.sets);
+        const volume = sets.reduce((v, s) => v + s.weight * s.reps, 0);
+        return (
+          <div key={date} className="pr-record">
+            <span className="pr-record-name">
+              {l.dayName}
+              <span className="history-date"> · {fmtShortDate(date)}</span>
+            </span>
+            <span className="history-meta">{sets.length} sets · {Math.round(volume).toLocaleString()} kg</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 // ── Gym tab ───────────────────────────────────────────────────────────────────
 export default function GymTab({ store }) {
-  const { todayLiftType, todayRoutine, liftComplete, liftDoneCount, prs } = store;
-  const [restSignal, setRestSignal] = useState(0);
-  const isTraining = todayLiftType === "upper" || todayLiftType === "lower";
-  const prList = Object.values(prs).sort((a, b) => b.maxWeight - a.maxWeight);
+  const { state, activeDay, activeLog } = store;
+  const [restSignal, setRestSignal] = useState({ n: 0, sec: 0 });
+  const prList = Object.values(state.prs).sort((a, b) => b.maxWeight - a.maxWeight);
 
   return (
     <div className="page">
-      <div className="card">
-        <div className="card-title">Today&apos;s Session</div>
-        <div className="workout-type">{LIFT_TYPE_LABEL[todayLiftType]}</div>
-        {isTraining && todayRoutine.length > 0 && (
-          <div className={`lift-progress-text ${liftComplete ? "complete" : ""}`}>
-            {liftComplete ? `✓ Lift complete — ${todayRoutine.length} exercises done` : `${liftDoneCount} / ${todayRoutine.length} exercises done`}
-          </div>
-        )}
-      </div>
+      {state.workoutPlan.days.length > 0 && <SessionCard store={store} />}
 
-      <CycleEditor store={store} />
-
-      {isTraining ? (
-        todayRoutine.length === 0 ? (
-          <div className="card builder-empty big">
-            Your <strong>{todayLiftType}</strong> routine is empty. Build it in the Routine Builder below to start logging.
-          </div>
-        ) : (
-          <>
-            <OverloadBanner store={store} />
-            <RestTimer startSignal={restSignal} />
-            {todayRoutine.map((ex) => (
-              <ExerciseLogCard key={ex.id} ex={ex} store={store} onSetAdded={() => setRestSignal((n) => n + 1)} />
-            ))}
-          </>
-        )
-      ) : (
-        <div className="card rest-day-card">
-          <div className="rest-day-title">Rest Day</div>
-          <div className="rest-day-desc">Recover and grow — no lifting scheduled today.</div>
+      {activeDay && activeDay.exercises.length === 0 && (
+        <div className="card builder-empty big">
+          <strong>{activeDay.name}</strong> has no exercises yet. Add some in the plan below.
         </div>
       )}
 
-      <RoutineBuilder store={store} />
+      {activeDay && activeDay.exercises.length > 0 && (
+        <>
+          {!activeLog?.completedAt && <RestTimer signal={restSignal} />}
+          {activeDay.exercises.map((ex) => (
+            <ExerciseLogCard
+              key={ex.id}
+              ex={ex}
+              day={activeDay}
+              log={activeLog}
+              store={store}
+              onSetAdded={(sec) => setRestSignal((s) => ({ n: s.n + 1, sec }))}
+            />
+          ))}
+        </>
+      )}
+
+      <PlanBuilder store={store} />
+      <WorkoutHistory state={state} />
 
       {prList.length > 0 && (
         <div className="card">

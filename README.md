@@ -1,19 +1,15 @@
-# LevelUp — Daily Life RPG
+# Pdash — Personal Dashboard RPG
 
-Turn your daily habits, workouts, and nutrition into a role-playing game. Built with React + Vite, runs fully offline, stores everything locally in your browser. Installable as a PWA on iOS/Android.
+Turn your own goals, workouts, diet and challenges into a role-playing game. You decide what to track — Pdash provides the tools, XP and levels. Built with React + Vite, installable as a PWA, with optional cloud accounts (Supabase) so your data follows you across devices.
 
 ## Features
 
-- **XP & Leveling** — earn XP from habits; every 2000 XP is a level, with titles (Rookie → Legendary)
-- **Streaks** — any logged activity (task, meal, or gym set) keeps your streak alive, with XP multipliers at 7/14/30 days
-- **Skill trees** — Fitness, Mind, Creator, and Health level up independently
-- **Weekly quests** — auto-generated challenges with claimable XP rewards
-- **Boss Day** — every Sunday, complete all tasks for a big bonus
-- **Meal tracking** — calories + macros vs editable goals, with one-tap re-logging of recent meals
-- **Gym tracker** — log sets (weight × reps), automatic personal-record detection, and a rest timer
-- **Stats** — total XP, longest streak, best day, and a 4-week activity heatmap
-- **Data backup** — export/import your full save as a JSON file (Profile tab)
-- **Milestone celebrations** — confetti on level-ups, streak milestones, and new PRs
+- **Personal goals (Today)** — create goals with a title, description, deadline and skill; edit, delete, and tick them off for XP. Due-today / overdue badges, active vs completed views.
+- **Custom workout plans (Gym)** — build your own split (Push/Pull/Legs, Upper/Lower, anything), schedule each day on weekdays, and add exercises with sets, reps, target weight, rest time and notes. Add, edit, delete and reorder days and exercises.
+- **Workout tracking** — pick today's workout, log sets (weight × reps), auto-start the rest timer with each exercise's rest time, detect personal records, finish the workout for XP, and browse workout history.
+- **Custom diet plans (Meals)** — create meals (Breakfast, Lunch, Snacks, Dinner or your own), add food items with quantity, calories, protein, carbs and fats, and log a whole meal in one tap. Daily calorie and macro totals are calculated automatically against editable targets; logged entries can be edited or removed.
+- **XP & levelling** — every 2000 XP is a level; skill trees (Fitness, Mind, Creator, Health); streak multipliers at 7/14/30 days; Sunday Boss Day bonus when every goal due that day is done.
+- **Profile** — themes (Arcade Red, Batman, Hello Kitty), level progress, skill trees, key stats with a 4-week activity heatmap, and JSON backup export/import.
 
 ## Run locally
 
@@ -22,7 +18,19 @@ npm install
 npm run dev
 ```
 
-Open the printed URL (default http://localhost:5173).
+Open the printed URL (default http://localhost:5173). Without Supabase configured, Pdash runs in **local-only mode**: no login, data saved in this browser.
+
+## Cloud accounts (Supabase)
+
+Logins, per-user private data, and sync across devices.
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql). It creates the `user_state` table and row-level-security policies so each user can only read and write their own data.
+3. In **Authentication → URL Configuration**, set the **Site URL** to where the app is hosted (e.g. `https://<username>.github.io/<repo>/`) and add `http://localhost:5173` to **Redirect URLs** for local development. Email/password sign-in is enabled by default.
+4. Copy `.env.example` to `.env.local` and fill in your project's URL and **anon** key (Project Settings → API). The anon key is designed to be public; data is protected by the RLS policies.
+5. `npm run dev` — you'll now see the sign-in screen.
+
+How sync works: every change is saved immediately to this device and pushed to your account shortly after. When you return to the app (or come back online) it pulls any newer save from your other devices. If you edit on two devices while offline, the most recent save wins. Progress saved in this browser before accounts existed is carried into your account the first time you sign in on it (unless the account already has cloud data).
 
 ## Build for production
 
@@ -33,13 +41,14 @@ npm run preview    # preview the production build locally
 
 ## Deploy (GitHub Pages)
 
-This repo includes a GitHub Actions workflow ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) that builds and deploys to GitHub Pages on every push to `main`.
+[.github/workflows/deploy.yml](.github/workflows/deploy.yml) builds and deploys to GitHub Pages on every push to `main`.
 
 1. Push this project to a GitHub repo.
 2. In the repo: **Settings → Pages → Build and deployment → Source → GitHub Actions**.
-3. Push to `main`. The site publishes at `https://<username>.github.io/<repo>/`.
+3. For cloud accounts, add repository secrets **`VITE_SUPABASE_URL`** and **`VITE_SUPABASE_ANON_KEY`** (Settings → Secrets and variables → Actions). Without them the deployed app runs in local-only mode.
+4. Push to `main`. The site publishes at `https://<username>.github.io/<repo>/`.
 
-The Vite config uses `base: './'`, so it works correctly under a Pages subpath.
+The Vite config uses `base: './'`, so it works under a Pages subpath.
 
 ## Install on your phone (PWA)
 
@@ -48,16 +57,11 @@ Once deployed (HTTPS required):
 - **iOS:** open the URL in **Safari** → Share → **Add to Home Screen**.
 - **Android:** open in Chrome → menu → **Install app**.
 
-It launches fullscreen with its own icon and works offline.
-
-> **iOS note:** browser storage for installed web apps can be cleared if the app
-> goes unused for ~7 days. Use the **Export Backup** button on the Profile tab
-> periodically and save the file to Files/iCloud so you never lose your progress.
-
 ## Data & privacy
 
-There is no backend. All data lives in your browser's `localStorage` on your device. Nothing is uploaded anywhere.
+- **With accounts:** your save is stored in your own row of the Supabase `user_state` table, readable and writable only by you (row-level security). A cached copy is kept on the device for offline use and removed when you sign out.
+- **Local-only mode:** everything stays in this browser's `localStorage`; nothing is uploaded. iOS may clear storage for home-screen apps unused for ~7 days, so use **Export Backup** regularly.
 
 ## Tech
 
-React · Vite · vite-plugin-pwa · canvas-confetti
+React · Vite · vite-plugin-pwa · Supabase (Auth + Postgres) · canvas-confetti

@@ -2,604 +2,798 @@ import { useState, useEffect, useCallback } from "react";
 import {
   getLevel,
   getStreakMultiplier,
-  getTasksForDay,
-  WEEKLY_QUESTS,
-  XP_PER_LEVEL,
-  liftTypeForDate,
+  GOAL_XP,
   LIFT_XP,
-  DEFAULT_REMINDERS,
+  MEAL_LOG_XP,
+  PR_XP,
+  BOSS_XP,
 } from "./gameData";
+import { defaultState, migrate, todayStr, uid, looksLikeSave } from "./storage";
+import { supabase, fetchRemoteState, pushRemoteState } from "./cloud";
 
-const STORE_KEY = "levelup_v1";
+const LEGACY_KEY = "levelup_v1";
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
-}
+// ── Local cache ───────────────────────────────────────────────────────────────
 
-function weekKey(date) {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
-  d.setDate(diff);
-  return d.toISOString().slice(0, 10);
-}
-
-// Single source of truth for the streak. Any logged activity (task, meal, gym set)
-// calls through here. Counts a day once: first activity bumps it, the rest are no-ops.
-function computeStreak(prev) {
-  const today = todayStr();
-  if (prev.lastActiveDate === today) {
-    // Already counted today.
-    return { changed: false, streak: prev.streak, longestStreak: prev.longestStreak, milestone: null };
+function readLocal(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const { _updatedAt, ...data } = JSON.parse(raw);
+    return { state: migrate(data), updatedAt: Number(_updatedAt) || 0 };
+  } catch {
+    return null;
   }
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const yesterdayStr = yesterday.toISOString().slice(0, 10);
+}
 
-  const newStreak = prev.lastActiveDate === yesterdayStr ? prev.streak + 1 : 1;
-  const milestone = newStreak === 7 || newStreak === 14 || newStreak === 30 ? newStreak : null;
+function writeLocal(key, state, updatedAt) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ ...state, _updatedAt: updatedAt }));
+  } catch {
+    /* storage full or blocked — cloud copy (if any) still syncs */
+  }
+}
+
+// ── Pure state helpers ───────────────────────────────────────────────────────
+
+function daysBetween(a, b) {
+  const [ay, am, ad] = a.split("-").map(Number);
+  const [by, bm, bd] = b.split("-").map(Number);
+  return Math.round((new Date(by, bm - 1, bd) - new Date(ay, am - 1, ad)) / 86400000);
+}
+
+// Counts a day of activity once: first activity of the day bumps the streak.
+function computeStreak(prev, today) {
+  if (prev.lastActiveDate === today) return { changed: false };
+  const streak = prev.lastActiveDate && daysBetween(prev.lastActiveDate, today) === 1 ? prev.streak + 1 : 1;
   return {
     changed: true,
-    streak: newStreak,
-    longestStreak: Math.max(newStreak, prev.longestStreak),
-    milestone,
+    streak,
+    longestStreak: Math.max(streak, prev.longestStreak),
+    milestone: streak === 7 || streak === 14 || streak === 30 ? streak : null,
   };
 }
 
-function defaultState() {
-  return {
-    totalXp: 0,
-    skillXp: { fitness: 0, mind: 0, creator: 0, health: 0 },
-    streak: 0,
-    lastActiveDate: null,
-    longestStreak: 0,
-    bestDayXp: 0,
-    bestDayDate: null,
-    completedTasks: {}, // { "YYYY-MM-DD": ["taskId", ...] }
-    loginBonusDates: [], // dates where login bonus was granted
-    weeklyStats: {}, // { "week-YYYY-MM-DD": { workoutsCompleted, codingDays, waterDays, readingDays, youtubeVideos } }
-    weeklyQuestsClaimed: {}, // { "week-YYYY-MM-DD": ["questId", ...] }
-    every2Seed: Math.floor(Math.random() * 2), // 0 or 1
-    activityLog: {}, // { "YYYY-MM-DD": totalXpEarned }
-    meals: {}, // { "YYYY-MM-DD": [ {id, slot, name, cal, protein, carbs, fats} ] }
-    nutritionGoals: { cal: 2200, protein: 150, carbs: 220, fats: 70 },
-    prs: {}, // { exerciseNameKey: { name, maxWeight, maxVolume } }
+// Applies XP (+ optional skill XP) and registers the day as active.
+function withXp(prev, amount, skill) {
+  const today = todayStr();
+  const next = { ...prev };
+  let milestone = null;
 
-    // ── Lifting ──
-    liftDay1: 1, // weekday (0=Sun..6=Sat) that is "Day 1" (first Upper day). Monday=1.
-    routines: { upper: [], lower: [] }, // ex: {id, name, tag:'compound'|'isolation', targetSets, repLow, repHigh}
-    liftLogs: {}, // { "YYYY-MM-DD": { type, ex: { [exId]: { sets:[{weight,reps,pr}], done } } } }
-    lastOverloadWeek: null, // ISO week key the overload reminder was last dismissed
-
-    // ── Reminders ──
-    reminderTimes: { ...DEFAULT_REMINDERS }, // { habitId: "HH:MM" }
-  };
-}
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return defaultState();
-    return { ...defaultState(), ...JSON.parse(raw) };
-  } catch {
-    return defaultState();
+  const s = computeStreak(prev, today);
+  if (s.changed) {
+    next.streak = s.streak;
+    next.longestStreak = s.longestStreak;
+    next.lastActiveDate = today;
+    if (s.milestone) milestone = { type: "streak", streak: s.milestone };
   }
+
+  if (amount > 0) {
+    next.totalXp = prev.totalXp + amount;
+    if (skill) next.skillXp = { ...prev.skillXp, [skill]: (prev.skillXp[skill] || 0) + amount };
+    const dayTotal = (prev.activityLog[today] || 0) + amount;
+    next.activityLog = { ...prev.activityLog, [today]: dayTotal };
+    if (dayTotal > prev.bestDayXp) {
+      next.bestDayXp = dayTotal;
+      next.bestDayDate = today;
+    }
+    const newLevel = getLevel(next.totalXp);
+    if (newLevel > getLevel(prev.totalXp)) milestone = { type: "levelup", level: newLevel };
+  }
+  return { next, milestone };
 }
 
-function saveState(state) {
-  localStorage.setItem(STORE_KEY, JSON.stringify(state));
+// Once per day on load: login bonus, and break the streak if a day was missed.
+// Returns the same object when nothing changes.
+function applyDaily(prev) {
+  const today = todayStr();
+  let next = prev;
+  let bonus = false;
+  if (!prev.loginBonusDates.includes(today)) {
+    next = {
+      ...next,
+      loginBonusDates: [...prev.loginBonusDates.slice(-60), today],
+      totalXp: prev.totalXp + 5,
+      activityLog: { ...prev.activityLog, [today]: (prev.activityLog[today] || 0) + 5 },
+    };
+    bonus = true;
+  }
+  if (prev.lastActiveDate && prev.streak > 0 && daysBetween(prev.lastActiveDate, today) > 1) {
+    next = { ...next, streak: 0 };
+  }
+  return { state: next, bonus };
 }
 
-export function useGameStore() {
-  const [state, setState] = useState(loadState);
+const num = (v) => Math.max(0, Number(v) || 0);
+const moveItem = (list, id, dir) => {
+  const i = list.findIndex((x) => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= list.length) return list;
+  const copy = [...list];
+  [copy[i], copy[j]] = [copy[j], copy[i]];
+  return copy;
+};
+
+// ── Pure action helpers ───────────────────────────────────────────────────────
+
+const setDays = (prev, days) => ({ ...prev, workoutPlan: { ...prev.workoutPlan, days } });
+
+const exerciseFields = (ex) => ({
+  name: ex.name.trim(),
+  sets: Math.min(20, num(ex.sets)) || 3,
+  reps: String(ex.reps || "").trim(),
+  targetWeight: ex.targetWeight === "" || ex.targetWeight == null ? "" : num(ex.targetWeight),
+  restSec: Math.min(900, num(ex.restSec)),
+  notes: (ex.notes || "").trim(),
+});
+
+const mapExercises = (prev, dayId, fn) =>
+  setDays(
+    prev,
+    prev.workoutPlan.days.map((d) => (d.id === dayId ? { ...d, exercises: fn(d.exercises) } : d))
+  );
+
+const sessionFor = (prev, dayId) => {
+  const today = todayStr();
+  const day = prev.workoutPlan.days.find((d) => d.id === dayId);
+  if (!day) return null;
+  const log = prev.workoutLogs[today];
+  return {
+    today,
+    day,
+    log: log && log.dayId === dayId ? log : { dayId, dayName: day.name, ex: {}, completedAt: null },
+  };
+};
+
+const setPlanMeals = (prev, meals) => ({ ...prev, dietPlan: { ...prev.dietPlan, meals } });
+
+const foodFields = (f) => ({
+  name: f.name.trim(),
+  qty: String(f.qty || "").trim(),
+  cal: num(f.cal),
+  protein: num(f.protein),
+  carbs: num(f.carbs),
+  fats: num(f.fats),
+});
+
+const mapItems = (prev, mealId, fn) =>
+  setPlanMeals(prev, prev.dietPlan.meals.map((m) => (m.id === mealId ? { ...m, items: fn(m.items) } : m)));
+
+const logEntries = (prev, entries) => {
+  const today = todayStr();
+  const base = { ...prev, meals: { ...prev.meals, [today]: [...(prev.meals[today] || []), ...entries] } };
+  const r = withXp(base, MEAL_LOG_XP, "health");
+  return { next: r.next, milestone: r.milestone, toast: { text: `+${MEAL_LOG_XP} XP Meal Logged!`, xp: MEAL_LOG_XP } };
+};
+
+// ── Sync controller (created once per mounted user) ──────────────────────────
+// Holds the authoritative latest state outside React so successive actions in
+// the same tick chain correctly, and owns local caching + debounced cloud push.
+
+function createSync({ key, userId, cloud, setSyncStatus, initial }) {
+  let state = initial.state;
+  let updatedAt = initial.updatedAt;
+  let pushedAt = 0;
+  let ready = !cloud;
+  let timer = null;
+  let inFlight = false;
+
+  const sync = {
+    get: () => state,
+    updatedAt: () => updatedAt,
+    unsynced: () => updatedAt > pushedAt,
+    isReady: () => ready,
+    isBusy: () => inFlight,
+    markReady: () => {
+      ready = true;
+    },
+    markPushed: (ts) => {
+      pushedAt = ts;
+    },
+    set: (next, ts) => {
+      state = next;
+      updatedAt = ts;
+      writeLocal(key, state, updatedAt);
+    },
+    save: () => writeLocal(key, state, updatedAt),
+    cancel: () => clearTimeout(timer),
+    schedule: () => {
+      if (!cloud) return;
+      if (ready) setSyncStatus("saving");
+      clearTimeout(timer);
+      timer = setTimeout(sync.flush, 800);
+    },
+    flush: async () => {
+      clearTimeout(timer);
+      timer = null;
+      if (!cloud || !ready || inFlight || updatedAt <= pushedAt) return;
+      const snapshot = state;
+      const ts = updatedAt;
+      inFlight = true;
+      setSyncStatus("saving");
+      try {
+        await pushRemoteState(userId, snapshot, ts);
+        pushedAt = ts;
+        setSyncStatus("synced");
+      } catch {
+        setSyncStatus(navigator.onLine ? "error" : "offline");
+      } finally {
+        inFlight = false;
+      }
+      if (pushedAt === ts && updatedAt > pushedAt) sync.schedule();
+    },
+  };
+  return sync;
+}
+
+function loadInitial(user, key) {
+  if (!user) {
+    const local = readLocal(key);
+    const base = local?.state || defaultState();
+    const { state, bonus } = applyDaily(base);
+    return { state, updatedAt: state !== base ? Date.now() : local?.updatedAt || 0, bonus, adoptedLegacy: false };
+  }
+  const own = readLocal(key);
+  if (own) return { ...own, bonus: false, adoptedLegacy: false };
+  // First sign-in on this device: adopt progress saved before accounts existed.
+  // Its timestamp is 0, so an existing cloud save always takes precedence.
+  const legacy = readLocal(LEGACY_KEY);
+  if (legacy) return { state: legacy.state, updatedAt: 0, bonus: false, adoptedLegacy: true };
+  return { state: defaultState(), updatedAt: 0, bonus: false, adoptedLegacy: false };
+}
+
+// ── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useGameStore(user) {
+  const cloud = !!(user && supabase);
+  const key = user ? `pdash_v2:${user.id}` : LEGACY_KEY;
+
+  const [syncStatus, setSyncStatus] = useState(cloud ? "loading" : "local");
+  const [boot] = useState(() => {
+    const init = loadInitial(user, key);
+    return { ...init, c: createSync({ key, userId: user?.id, cloud, setSyncStatus, initial: init }) };
+  });
+  const c = boot.c;
+  const [state, setState] = useState(boot.state);
   const [pendingMilestone, setPendingMilestone] = useState(null);
   const [xpToasts, setXpToasts] = useState([]);
 
-  // Persist on every change
-  useEffect(() => {
-    saveState(state);
-  }, [state]);
-
-  // Daily login bonus + streak update on mount
-  useEffect(() => {
-    const today = todayStr();
-    setState((prev) => {
-      const next = { ...prev };
-
-      // Login bonus
-      if (!prev.loginBonusDates.includes(today)) {
-        next.loginBonusDates = [...prev.loginBonusDates, today];
-        const bonus = 5;
-        next.totalXp = prev.totalXp + bonus;
-        next.activityLog = {
-          ...prev.activityLog,
-          [today]: (prev.activityLog[today] || 0) + bonus,
-        };
-        setTimeout(() =>
-          addToast({ id: Date.now() + Math.random(), text: "+5 XP Login Bonus!", xp: 5 }), 500
-        );
-      }
-
-      // Streak reset: if more than one full day has passed since the last logged
-      // activity, the streak is broken. (Today's first activity will re-bump it.)
-      if (prev.lastActiveDate && prev.lastActiveDate !== today) {
-        const diff = Math.floor(
-          (new Date(today) - new Date(prev.lastActiveDate)) / (1000 * 60 * 60 * 24)
-        );
-        if (diff > 1) next.streak = 0;
-      }
-
-      return next;
-    });
-  }, []); // eslint-disable-line
-
-  const addToast = useCallback((toast) => {
-    setXpToasts((prev) => [...prev, toast]);
-    setTimeout(() => {
-      setXpToasts((prev) => prev.filter((t) => t.id !== toast.id));
-    }, 2500);
+  const addToast = useCallback((text, xp) => {
+    const id = uid();
+    setXpToasts((prev) => [...prev, { id, text, xp }]);
+    setTimeout(() => setXpToasts((prev) => prev.filter((t) => t.id !== id)), 2500);
   }, []);
 
-  const completeTask = useCallback(
-    (taskId, taskXp, taskSkill) => {
-      const today = todayStr();
-      setState((prev) => {
-        const todayDone = prev.completedTasks[today] || [];
-        if (todayDone.includes(taskId)) return prev;
-
-        const multiplier = getStreakMultiplier(prev.streak);
-        const earned = Math.round(taskXp * multiplier);
-
-        const newTodayDone = [...todayDone, taskId];
-        const newActivityLog = {
-          ...prev.activityLog,
-          [today]: (prev.activityLog[today] || 0) + earned,
-        };
-
-        const newBestDayXp =
-          (newActivityLog[today] || 0) > prev.bestDayXp
-            ? newActivityLog[today]
-            : prev.bestDayXp;
-        const newBestDayDate =
-          newBestDayXp > prev.bestDayXp ? today : prev.bestDayDate;
-
-        // Update skill XP
-        const newSkillXp = { ...prev.skillXp };
-        if (taskSkill) newSkillXp[taskSkill] = (newSkillXp[taskSkill] || 0) + earned;
-
-        // Update weekly stats
-        const wk = weekKey(new Date());
-        const wStats = { ...(prev.weeklyStats[wk] || {}) };
-        if (taskId === "upper" || taskId === "lower")
-          wStats.workoutsCompleted = (wStats.workoutsCompleted || 0) + 1;
-        if (taskId === "coding") wStats.codingDays = (wStats.codingDays || 0) + 1;
-        if (taskId === "water") wStats.waterDays = (wStats.waterDays || 0) + 1;
-        if (taskId === "read") wStats.readingDays = (wStats.readingDays || 0) + 1;
-        if (taskId === "youtube") wStats.youtubeVideos = (wStats.youtubeVideos || 0) + 1;
-        if (taskId === "reel") wStats.reelDays = (wStats.reelDays || 0) + 1;
-
-        // Streak update (shared helper — counts the day once)
-        const s = computeStreak(prev);
-        const newStreak = s.streak;
-        const newLongestStreak = s.longestStreak;
-
-        const prevLevel = getLevel(prev.totalXp);
-        const newTotalXp = prev.totalXp + earned;
-        const newLevel = getLevel(newTotalXp);
-
-        if (newLevel > prevLevel) {
-          setTimeout(() => setPendingMilestone({ type: "levelup", level: newLevel }), 300);
-        } else if (s.milestone) {
-          setTimeout(() => setPendingMilestone({ type: "streak", streak: s.milestone }), 300);
-        }
-
-        return {
-          ...prev,
-          totalXp: newTotalXp,
-          skillXp: newSkillXp,
-          streak: newStreak,
-          longestStreak: newLongestStreak,
-          lastActiveDate: today,
-          bestDayXp: newBestDayXp,
-          bestDayDate: newBestDayDate,
-          completedTasks: { ...prev.completedTasks, [today]: newTodayDone },
-          activityLog: newActivityLog,
-          weeklyStats: { ...prev.weeklyStats, [wk]: wStats },
-        };
-      });
-
-      const multiplier = getStreakMultiplier(
-        JSON.parse(localStorage.getItem(STORE_KEY) || "{}").streak || 0
-      );
-      const toastXp = Math.round(taskXp * multiplier);
-      addToast({ id: Date.now() + Math.random(), text: `+${toastXp} XP`, xp: toastXp });
+  // Every mutation goes through here: fn(prev) returns { next, toast?, milestone? }
+  // (or null for no change). Side effects run once, outside any state updater.
+  const commit = useCallback(
+    (fn) => {
+      const prev = c.get();
+      const r = fn(prev);
+      if (!r || !r.next || r.next === prev) return false;
+      c.set(r.next, Date.now());
+      c.schedule();
+      setState(r.next);
+      if (r.toast) addToast(r.toast.text, r.toast.xp);
+      if (r.milestone) setTimeout(() => setPendingMilestone(r.milestone), 300);
+      return true;
     },
-    [addToast]
+    [c, addToast]
   );
 
-  const claimWeeklyQuest = useCallback((questId, questXp) => {
-    const wk = weekKey(new Date());
-    setState((prev) => {
-      const claimed = prev.weeklyQuestsClaimed[wk] || [];
-      if (claimed.includes(questId)) return prev;
-      const today = todayStr();
-      return {
-        ...prev,
-        totalXp: prev.totalXp + questXp,
-        activityLog: {
-          ...prev.activityLog,
-          [today]: (prev.activityLog[today] || 0) + questXp,
-        },
-        weeklyQuestsClaimed: {
-          ...prev.weeklyQuestsClaimed,
-          [wk]: [...claimed, questId],
-        },
-      };
-    });
-    addToast({ id: Date.now() + Math.random(), text: `+${questXp} XP Quest!`, xp: questXp });
-  }, [addToast]);
+  const adopt = useCallback(
+    (next, ts) => {
+      c.set(next, ts);
+      setState(next);
+    },
+    [c]
+  );
 
-  const claimBossDay = useCallback(() => {
-    const today = todayStr();
-    setState((prev) => {
-      if ((prev.completedTasks[today + "_boss"] || []).includes("claimed")) return prev;
-      return {
-        ...prev,
-        totalXp: prev.totalXp + 500,
-        activityLog: {
-          ...prev.activityLog,
-          [today]: (prev.activityLog[today] || 0) + 500,
-        },
-        completedTasks: {
-          ...prev.completedTasks,
-          [today + "_boss"]: ["claimed"],
-        },
-      };
-    });
-    addToast({ id: Date.now() + Math.random(), text: "+500 XP BOSS DAY!", xp: 500 });
-    setTimeout(() => setPendingMilestone({ type: "bossday" }), 300);
-  }, [addToast]);
-
-  // Generic XP award (used by meals & PRs) — updates total, skill, activity, best day, level-up.
-  const awardXp = useCallback((skill, amount, toastText) => {
-    const today = todayStr();
-    setState((prev) => {
-      const newTotalXp = prev.totalXp + amount;
-      const newSkillXp = { ...prev.skillXp };
-      if (skill) newSkillXp[skill] = (newSkillXp[skill] || 0) + amount;
-      const newActivityLog = {
-        ...prev.activityLog,
-        [today]: (prev.activityLog[today] || 0) + amount,
-      };
-      const dayTotal = newActivityLog[today];
-      const newBestDayXp = dayTotal > prev.bestDayXp ? dayTotal : prev.bestDayXp;
-      const newBestDayDate = dayTotal > prev.bestDayXp ? today : prev.bestDayDate;
-
-      if (getLevel(newTotalXp) > getLevel(prev.totalXp)) {
-        setTimeout(() => setPendingMilestone({ type: "levelup", level: getLevel(newTotalXp) }), 300);
-      }
-
-      return {
-        ...prev,
-        totalXp: newTotalXp,
-        skillXp: newSkillXp,
-        activityLog: newActivityLog,
-        bestDayXp: newBestDayXp,
-        bestDayDate: newBestDayDate,
-      };
-    });
-    if (amount > 0)
-      addToast({ id: Date.now() + Math.random(), text: toastText || `+${amount} XP`, xp: amount });
-  }, [addToast]);
-
-  // Keep the streak alive from any logged activity (meals, gym sets).
-  const registerActivity = useCallback(() => {
-    setState((prev) => {
-      const s = computeStreak(prev);
-      if (!s.changed) return prev;
-      if (s.milestone) setTimeout(() => setPendingMilestone({ type: "streak", streak: s.milestone }), 300);
-      return { ...prev, streak: s.streak, longestStreak: s.longestStreak, lastActiveDate: todayStr() };
-    });
-  }, []);
-
-  // ── Meals ──
-  const addMeal = useCallback((meal) => {
-    const today = todayStr();
-    setState((prev) => {
-      const dayMeals = prev.meals[today] || [];
-      return {
-        ...prev,
-        meals: { ...prev.meals, [today]: [...dayMeals, { ...meal, id: Date.now() + "" + Math.random() }] },
-      };
-    });
-    awardXp("health", 5, "+5 XP Meal Logged!");
-    registerActivity();
-  }, [awardXp, registerActivity]);
-
-  const deleteMeal = useCallback((mealId) => {
-    const today = todayStr();
-    setState((prev) => ({
-      ...prev,
-      meals: { ...prev.meals, [today]: (prev.meals[today] || []).filter((m) => m.id !== mealId) },
-    }));
-  }, []);
-
-  const setNutritionGoals = useCallback((goals) => {
-    setState((prev) => ({ ...prev, nutritionGoals: { ...prev.nutritionGoals, ...goals } }));
-  }, []);
-
-  // ── Reminders ──
-  const setReminderTime = useCallback((habitId, time) => {
-    setState((prev) => ({ ...prev, reminderTimes: { ...prev.reminderTimes, [habitId]: time } }));
-  }, []);
-
-  // ── Lifting: cycle config ──
-  const setLiftDay1 = useCallback((weekday) => {
-    setState((prev) => ({ ...prev, liftDay1: weekday }));
-  }, []);
-
-  // ── Lifting: routine builder ──
-  const addRoutineExercise = useCallback((type, ex) => {
-    setState((prev) => ({
-      ...prev,
-      routines: {
-        ...prev.routines,
-        [type]: [
-          ...(prev.routines[type] || []),
-          {
-            id: Date.now() + "" + Math.random(),
-            name: ex.name.trim(),
-            tag: ex.tag || "compound",
-            targetSets: Number(ex.targetSets) || 3,
-            repLow: Number(ex.repLow) || 8,
-            repHigh: Number(ex.repHigh) || 12,
-          },
-        ],
-      },
-    }));
-  }, []);
-
-  const updateRoutineExercise = useCallback((type, exId, patch) => {
-    setState((prev) => ({
-      ...prev,
-      routines: {
-        ...prev.routines,
-        [type]: (prev.routines[type] || []).map((e) => (e.id === exId ? { ...e, ...patch } : e)),
-      },
-    }));
-  }, []);
-
-  const removeRoutineExercise = useCallback((type, exId) => {
-    setState((prev) => ({
-      ...prev,
-      routines: { ...prev.routines, [type]: (prev.routines[type] || []).filter((e) => e.id !== exId) },
-    }));
-  }, []);
-
-  const moveRoutineExercise = useCallback((type, exId, dir) => {
-    setState((prev) => {
-      const list = [...(prev.routines[type] || [])];
-      const i = list.findIndex((e) => e.id === exId);
-      const j = i + dir;
-      if (i < 0 || j < 0 || j >= list.length) return prev;
-      [list[i], list[j]] = [list[j], list[i]];
-      return { ...prev, routines: { ...prev.routines, [type]: list } };
-    });
-  }, []);
-
-  // ── Lifting: completion (all exercises checked → award once) ──
-  const completeLiftDay = useCallback(() => {
-    const today = todayStr();
-    setState((prev) => {
-      if ((prev.completedTasks[today] || []).includes("lift")) return prev;
-      const mult = getStreakMultiplier(prev.streak);
-      const earned = Math.round(LIFT_XP * mult);
-      const wk = weekKey(new Date());
-      const wStats = { ...(prev.weeklyStats[wk] || {}) };
-      wStats.workoutsCompleted = (wStats.workoutsCompleted || 0) + 1;
-      const newActivityLog = { ...prev.activityLog, [today]: (prev.activityLog[today] || 0) + earned };
-      const dayTotal = newActivityLog[today];
-      const s = computeStreak(prev);
-      const newTotalXp = prev.totalXp + earned;
-
-      if (getLevel(newTotalXp) > getLevel(prev.totalXp)) {
-        setTimeout(() => setPendingMilestone({ type: "levelup", level: getLevel(newTotalXp) }), 300);
-      } else if (s.milestone) {
-        setTimeout(() => setPendingMilestone({ type: "streak", streak: s.milestone }), 300);
-      }
-
-      return {
-        ...prev,
-        totalXp: newTotalXp,
-        skillXp: { ...prev.skillXp, fitness: (prev.skillXp.fitness || 0) + earned },
-        streak: s.streak,
-        longestStreak: s.longestStreak,
-        lastActiveDate: today,
-        activityLog: newActivityLog,
-        bestDayXp: dayTotal > prev.bestDayXp ? dayTotal : prev.bestDayXp,
-        bestDayDate: dayTotal > prev.bestDayXp ? today : prev.bestDayDate,
-        completedTasks: { ...prev.completedTasks, [today]: [...(prev.completedTasks[today] || []), "lift"] },
-        weeklyStats: { ...prev.weeklyStats, [wk]: wStats },
-      };
-    });
-    addToast({ id: Date.now() + Math.random(), text: `+${LIFT_XP} XP Lift Complete!`, xp: LIFT_XP });
-  }, [addToast]);
-
-  // ── Lifting: per-exercise logging ──
-  const addLiftSet = useCallback((exId, name, weight, reps) => {
-    const today = todayStr();
-    const w = Number(weight) || 0;
-    const r = Number(reps) || 0;
-    if (r <= 0) return;
-    let prResult = null;
-
-    setState((prev) => {
-      const type = liftTypeForDate(new Date(), prev.liftDay1);
-      const log = prev.liftLogs[today] || { type, ex: {} };
-      const exLog = log.ex[exId] || { sets: [], done: false };
-      const key = name.toLowerCase().trim();
-      const volume = w * r;
-      const prevPr = prev.prs[key] || { name, maxWeight: 0, maxVolume: 0 };
-      const isWeightPr = w > prevPr.maxWeight;
-      const isVolumePr = volume > prevPr.maxVolume;
-      if (isWeightPr || isVolumePr) {
-        prResult = { name, kind: isWeightPr ? "weight" : "volume", weight: w, reps: r };
-      }
-      const newPrs = {
-        ...prev.prs,
-        [key]: { name, maxWeight: Math.max(prevPr.maxWeight, w), maxVolume: Math.max(prevPr.maxVolume, volume) },
-      };
-      const newLog = {
-        ...log,
-        type,
-        ex: { ...log.ex, [exId]: { ...exLog, sets: [...exLog.sets, { weight: w, reps: r, pr: isWeightPr }] } },
-      };
-      return { ...prev, liftLogs: { ...prev.liftLogs, [today]: newLog }, prs: newPrs };
-    });
-
-    registerActivity();
-    if (prResult) {
-      awardXp("fitness", 25, "+25 XP NEW PR!");
-      setTimeout(() => setPendingMilestone({ type: "pr", pr: prResult }), 300);
-    }
-  }, [awardXp, registerActivity]);
-
-  const deleteLiftSet = useCallback((exId, setIdx) => {
-    const today = todayStr();
-    setState((prev) => {
-      const log = prev.liftLogs[today];
-      if (!log || !log.ex[exId]) return prev;
-      const exLog = log.ex[exId];
-      return {
-        ...prev,
-        liftLogs: {
-          ...prev.liftLogs,
-          [today]: { ...log, ex: { ...log.ex, [exId]: { ...exLog, sets: exLog.sets.filter((_, i) => i !== setIdx) } } },
-        },
-      };
-    });
-  }, []);
-
-  const toggleExerciseDone = useCallback((exId) => {
-    const today = todayStr();
-    setState((prev) => {
-      const type = liftTypeForDate(new Date(), prev.liftDay1);
-      if (type !== "upper" && type !== "lower") return prev;
-      const log = prev.liftLogs[today] || { type, ex: {} };
-      const exLog = log.ex[exId] || { sets: [], done: false };
-      const newEx = { ...log.ex, [exId]: { ...exLog, done: !exLog.done } };
-      return { ...prev, liftLogs: { ...prev.liftLogs, [today]: { ...log, type, ex: newEx } } };
-    });
-    // Completion is detected declaratively by an effect — see below.
-  }, []);
-
-  // When every exercise in today's routine is checked off, award the lift once.
+  // Initial load: local mode is ready immediately; cloud mode pulls the remote
+  // save, keeps whichever copy is newer, then applies the daily bonus.
   useEffect(() => {
-    const today = todayStr();
-    const type = liftTypeForDate(new Date(), state.liftDay1);
-    if (type !== "upper" && type !== "lower") return;
-    const routine = state.routines[type] || [];
-    if (routine.length === 0) return;
-    if ((state.completedTasks[today] || []).includes("lift")) return;
-    const log = state.liftLogs[today];
-    if (!log) return;
-    if (routine.every((r) => log.ex[r.id]?.done)) completeLiftDay();
-  }, [state.liftLogs, state.routines, state.liftDay1, state.completedTasks, completeLiftDay]);
-
-  // ── Backup ──
-  const importData = useCallback((parsed) => {
-    if (!parsed || typeof parsed !== "object") throw new Error("Invalid file");
-    // Sanity check: must look like a Pdash save.
-    if (!("totalXp" in parsed) || !("skillXp" in parsed)) {
-      throw new Error("This doesn't look like a Pdash backup.");
+    if (!cloud) {
+      c.save();
+      if (!boot.bonus) return;
+      const t = setTimeout(() => addToast("+5 XP Login Bonus!", 5), 500);
+      return () => clearTimeout(t);
     }
-    setState({ ...defaultState(), ...parsed });
-  }, []);
+    let cancelled = false;
+    (async () => {
+      let remote = null;
+      let reachable = true;
+      try {
+        remote = await fetchRemoteState(user.id);
+      } catch {
+        reachable = false;
+      }
+      if (cancelled) return;
+      let base = c.get();
+      let baseTs = c.updatedAt();
+      if (remote && remote.updatedAt > baseTs) {
+        base = migrate(remote.data);
+        baseTs = remote.updatedAt;
+      }
+      if (remote) c.markPushed(remote.updatedAt);
+      const { state: next, bonus } = applyDaily(base);
+      adopt(next, next !== base ? Date.now() : baseTs);
+      if (boot.adoptedLegacy) localStorage.removeItem(LEGACY_KEY);
+      c.markReady();
+      setSyncStatus(reachable ? "synced" : "offline");
+      if (bonus) addToast("+5 XP Login Bonus!", 5);
+      if (reachable) c.flush();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep in step with other devices: pull on focus/online, flush when hidden.
+  useEffect(() => {
+    if (!cloud) return;
+    const pull = async () => {
+      if (!c.isReady() || c.isBusy()) return;
+      try {
+        const remote = await fetchRemoteState(user.id);
+        if (remote && remote.updatedAt > c.updatedAt()) {
+          c.markPushed(remote.updatedAt);
+          adopt(migrate(remote.data), remote.updatedAt);
+          setSyncStatus("synced");
+        } else {
+          await c.flush();
+          if (!c.unsynced()) setSyncStatus("synced");
+        }
+      } catch {
+        setSyncStatus(navigator.onLine ? "error" : "offline");
+      }
+    };
+    const onVisibility = () => (document.visibilityState === "visible" ? pull() : c.flush());
+    window.addEventListener("online", pull);
+    document.addEventListener("visibilitychange", onVisibility);
+    window.addEventListener("pagehide", c.flush);
+    return () => {
+      window.removeEventListener("online", pull);
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pagehide", c.flush);
+      c.cancel();
+    };
+  }, [cloud, c, user, adopt]);
+
+  const signOut = useCallback(async () => {
+    if (!supabase) return;
+    await c.flush();
+    if (
+      c.unsynced() &&
+      !window.confirm("Some changes haven't synced yet (you seem to be offline). Sign out anyway and lose them?")
+    ) {
+      return;
+    }
+    localStorage.removeItem(key);
+    await supabase.auth.signOut();
+  }, [c, key]);
+
+  // ── Goals (Today) ──
+  const addGoal = useCallback(
+    (g) =>
+      commit((prev) => ({
+        next: {
+          ...prev,
+          goals: [
+            ...prev.goals,
+            {
+              id: uid(),
+              title: g.title.trim(),
+              description: (g.description || "").trim(),
+              deadline: g.deadline || "",
+              skill: g.skill || "",
+              completed: false,
+              completedAt: null,
+              xpAwarded: false,
+              createdAt: Date.now(),
+            },
+          ],
+        },
+      })),
+    [commit]
+  );
+
+  const updateGoal = useCallback(
+    (id, patch) =>
+      commit((prev) => ({
+        next: { ...prev, goals: prev.goals.map((g) => (g.id === id ? { ...g, ...patch } : g)) },
+      })),
+    [commit]
+  );
+
+  const deleteGoal = useCallback(
+    (id) => commit((prev) => ({ next: { ...prev, goals: prev.goals.filter((g) => g.id !== id) } })),
+    [commit]
+  );
+
+  // Completing awards XP once per goal; reopening doesn't refund or re-award.
+  const toggleGoal = useCallback(
+    (id) =>
+      commit((prev) => {
+        const goal = prev.goals.find((g) => g.id === id);
+        if (!goal) return null;
+        const completing = !goal.completed;
+        const updated = {
+          ...goal,
+          completed: completing,
+          completedAt: completing ? todayStr() : null,
+          xpAwarded: goal.xpAwarded || completing,
+        };
+        const base = { ...prev, goals: prev.goals.map((g) => (g.id === id ? updated : g)) };
+        if (!completing) return { next: base };
+        const earned = goal.xpAwarded ? 0 : Math.round(GOAL_XP * getStreakMultiplier(prev.streak));
+        const r = withXp(base, earned, goal.skill || null);
+        return {
+          next: r.next,
+          milestone: r.milestone,
+          toast: earned ? { text: `+${earned} XP Goal Complete!`, xp: earned } : null,
+        };
+      }),
+    [commit]
+  );
+
+  const claimBossDay = useCallback(
+    () =>
+      commit((prev) => {
+        const today = todayStr();
+        if (prev.bossClaimDates.includes(today)) return null;
+        const r = withXp({ ...prev, bossClaimDates: [...prev.bossClaimDates, today] }, BOSS_XP, null);
+        return {
+          next: r.next,
+          milestone: r.milestone?.type === "levelup" ? r.milestone : { type: "bossday" },
+          toast: { text: `+${BOSS_XP} XP BOSS DAY!`, xp: BOSS_XP },
+        };
+      }),
+    [commit]
+  );
+
+  // ── Workout plan (Gym builder) ──
+  const addDay = useCallback(
+    (name) =>
+      commit((prev) => ({
+        next: setDays(prev, [
+          ...prev.workoutPlan.days,
+          { id: uid(), name: name.trim(), weekdays: [], exercises: [] },
+        ]),
+      })),
+    [commit]
+  );
+
+  const updateDay = useCallback(
+    (dayId, patch) =>
+      commit((prev) => ({
+        next: setDays(prev, prev.workoutPlan.days.map((d) => (d.id === dayId ? { ...d, ...patch } : d))),
+      })),
+    [commit]
+  );
+
+  const deleteDay = useCallback(
+    (dayId) => commit((prev) => ({ next: setDays(prev, prev.workoutPlan.days.filter((d) => d.id !== dayId)) })),
+    [commit]
+  );
+
+  // Empties the plan; completed workout history and PRs stay. Today's
+  // unfinished session belongs to a day that no longer exists, so drop it.
+  const clearPlan = useCallback(
+    () =>
+      commit((prev) => {
+        const today = todayStr();
+        const logs = { ...prev.workoutLogs };
+        if (logs[today] && !logs[today].completedAt) delete logs[today];
+        return { next: { ...setDays(prev, []), workoutLogs: logs } };
+      }),
+    [commit]
+  );
+
+  const moveDay = useCallback(
+    (dayId, dir) => commit((prev) => ({ next: setDays(prev, moveItem(prev.workoutPlan.days, dayId, dir)) })),
+    [commit]
+  );
+
+  const addExercise = useCallback(
+    (dayId, ex) =>
+      commit((prev) => ({ next: mapExercises(prev, dayId, (list) => [...list, { id: uid(), ...exerciseFields(ex) }]) })),
+    [commit]
+  );
+
+  const updateExercise = useCallback(
+    (dayId, exId, ex) =>
+      commit((prev) => ({
+        next: mapExercises(prev, dayId, (list) => list.map((e) => (e.id === exId ? { ...e, ...exerciseFields(ex) } : e))),
+      })),
+    [commit]
+  );
+
+  const deleteExercise = useCallback(
+    (dayId, exId) => commit((prev) => ({ next: mapExercises(prev, dayId, (list) => list.filter((e) => e.id !== exId)) })),
+    [commit]
+  );
+
+  const moveExercise = useCallback(
+    (dayId, exId, dir) => commit((prev) => ({ next: mapExercises(prev, dayId, (list) => moveItem(list, exId, dir)) })),
+    [commit]
+  );
+
+  // ── Workout session (today) ──
+  const selectWorkoutDay = useCallback(
+    (dayId) =>
+      commit((prev) => {
+        const today = todayStr();
+        const logs = { ...prev.workoutLogs };
+        if (!dayId) {
+          delete logs[today];
+          return { next: { ...prev, workoutLogs: logs } };
+        }
+        const day = prev.workoutPlan.days.find((d) => d.id === dayId);
+        if (!day) return null;
+        logs[today] = { dayId, dayName: day.name, ex: {}, completedAt: null };
+        return { next: { ...prev, workoutLogs: logs } };
+      }),
+    [commit]
+  );
+
+  const addSet = useCallback(
+    (dayId, ex, weight, reps) =>
+      commit((prev) => {
+        const w = num(weight);
+        const r = Math.round(num(reps));
+        if (r <= 0) return null;
+        const s = sessionFor(prev, dayId);
+        if (!s || s.log.completedAt) return null;
+        const exLog = s.log.ex[ex.id] || { sets: [], done: false };
+        const prKey = ex.name.toLowerCase().trim();
+        const prevPr = prev.prs[prKey] || { name: ex.name, maxWeight: 0, maxVolume: 0 };
+        const isWeightPr = w > 0 && w > prevPr.maxWeight;
+        const isVolumePr = w > 0 && w * r > prevPr.maxVolume;
+        const isPr = isWeightPr || isVolumePr;
+        const base = {
+          ...prev,
+          prs: {
+            ...prev.prs,
+            [prKey]: { name: ex.name, maxWeight: Math.max(prevPr.maxWeight, w), maxVolume: Math.max(prevPr.maxVolume, w * r) },
+          },
+          workoutLogs: {
+            ...prev.workoutLogs,
+            [s.today]: {
+              ...s.log,
+              dayName: s.day.name,
+              ex: { ...s.log.ex, [ex.id]: { ...exLog, sets: [...exLog.sets, { weight: w, reps: r, pr: isWeightPr }] } },
+            },
+          },
+        };
+        const x = withXp(base, isPr ? PR_XP : 0, "fitness");
+        const prMilestone = { type: "pr", pr: { name: ex.name, kind: isWeightPr ? "weight" : "volume", weight: w, reps: r } };
+        return {
+          next: x.next,
+          milestone: x.milestone?.type === "levelup" ? x.milestone : isPr ? prMilestone : x.milestone,
+          toast: isPr ? { text: `+${PR_XP} XP NEW PR!`, xp: PR_XP } : null,
+        };
+      }),
+    [commit]
+  );
+
+  const deleteSet = useCallback(
+    (dayId, exId, idx) =>
+      commit((prev) => {
+        const s = sessionFor(prev, dayId);
+        const exLog = s?.log.ex[exId];
+        if (!exLog || s.log.completedAt) return null;
+        return {
+          next: {
+            ...prev,
+            workoutLogs: {
+              ...prev.workoutLogs,
+              [s.today]: { ...s.log, ex: { ...s.log.ex, [exId]: { ...exLog, sets: exLog.sets.filter((_, i) => i !== idx) } } },
+            },
+          },
+        };
+      }),
+    [commit]
+  );
+
+  const toggleExerciseDone = useCallback(
+    (dayId, exId) =>
+      commit((prev) => {
+        const s = sessionFor(prev, dayId);
+        if (!s || s.log.completedAt) return null;
+        const exLog = s.log.ex[exId] || { sets: [], done: false };
+        return {
+          next: {
+            ...prev,
+            workoutLogs: {
+              ...prev.workoutLogs,
+              [s.today]: { ...s.log, ex: { ...s.log.ex, [exId]: { ...exLog, done: !exLog.done } } },
+            },
+          },
+        };
+      }),
+    [commit]
+  );
+
+  const finishWorkout = useCallback(
+    (dayId) =>
+      commit((prev) => {
+        const s = sessionFor(prev, dayId);
+        if (!s || s.log.completedAt) return null;
+        const alreadyEarnedToday = prev.workoutXpDates.includes(s.today);
+        const earned = alreadyEarnedToday ? 0 : Math.round(LIFT_XP * getStreakMultiplier(prev.streak));
+        const base = {
+          ...prev,
+          workoutXpDates: alreadyEarnedToday ? prev.workoutXpDates : [...prev.workoutXpDates.slice(-400), s.today],
+          workoutLogs: { ...prev.workoutLogs, [s.today]: { ...s.log, dayName: s.day.name, completedAt: s.today } },
+        };
+        const r = withXp(base, earned, "fitness");
+        return {
+          next: r.next,
+          milestone: r.milestone,
+          toast: { text: earned ? `+${earned} XP Workout Complete!` : "Workout saved!", xp: earned },
+        };
+      }),
+    [commit]
+  );
+
+  const reopenWorkout = useCallback(
+    () =>
+      commit((prev) => {
+        const today = todayStr();
+        const log = prev.workoutLogs[today];
+        if (!log?.completedAt) return null;
+        return { next: { ...prev, workoutLogs: { ...prev.workoutLogs, [today]: { ...log, completedAt: null } } } };
+      }),
+    [commit]
+  );
+
+  // ── Diet plan (Meals builder) ──
+  const addPlanMeal = useCallback(
+    (name) =>
+      commit((prev) => ({
+        next: setPlanMeals(prev, [...prev.dietPlan.meals, { id: uid(), name: name.trim(), items: [] }]),
+      })),
+    [commit]
+  );
+
+  const renamePlanMeal = useCallback(
+    (mealId, name) =>
+      commit((prev) => ({
+        next: setPlanMeals(prev, prev.dietPlan.meals.map((m) => (m.id === mealId ? { ...m, name: name.trim() } : m))),
+      })),
+    [commit]
+  );
+
+  const deletePlanMeal = useCallback(
+    (mealId) => commit((prev) => ({ next: setPlanMeals(prev, prev.dietPlan.meals.filter((m) => m.id !== mealId)) })),
+    [commit]
+  );
+
+  const movePlanMeal = useCallback(
+    (mealId, dir) => commit((prev) => ({ next: setPlanMeals(prev, moveItem(prev.dietPlan.meals, mealId, dir)) })),
+    [commit]
+  );
+
+  const addPlanItem = useCallback(
+    (mealId, item) =>
+      commit((prev) => ({ next: mapItems(prev, mealId, (items) => [...items, { id: uid(), ...foodFields(item) }]) })),
+    [commit]
+  );
+
+  const updatePlanItem = useCallback(
+    (mealId, itemId, item) =>
+      commit((prev) => ({
+        next: mapItems(prev, mealId, (items) => items.map((i) => (i.id === itemId ? { ...i, ...foodFields(item) } : i))),
+      })),
+    [commit]
+  );
+
+  const deletePlanItem = useCallback(
+    (mealId, itemId) =>
+      commit((prev) => ({ next: mapItems(prev, mealId, (items) => items.filter((i) => i.id !== itemId)) })),
+    [commit]
+  );
+
+  // ── Food log (today) ──
+  const logPlanMeal = useCallback(
+    (mealId) =>
+      commit((prev) => {
+        const meal = prev.dietPlan.meals.find((m) => m.id === mealId);
+        if (!meal || !meal.items.length) return null;
+        return logEntries(
+          prev,
+          meal.items.map((i) => ({ ...foodFields(i), id: uid(), slot: meal.name }))
+        );
+      }),
+    [commit]
+  );
+
+  const addFood = useCallback(
+    (slot, item) => commit((prev) => logEntries(prev, [{ id: uid(), slot, ...foodFields(item) }])),
+    [commit]
+  );
+
+  const updateFood = useCallback(
+    (entryId, item) =>
+      commit((prev) => {
+        const today = todayStr();
+        return {
+          next: {
+            ...prev,
+            meals: {
+              ...prev.meals,
+              [today]: (prev.meals[today] || []).map((m) => (m.id === entryId ? { ...m, ...foodFields(item) } : m)),
+            },
+          },
+        };
+      }),
+    [commit]
+  );
+
+  const deleteFood = useCallback(
+    (entryId) =>
+      commit((prev) => {
+        const today = todayStr();
+        return {
+          next: { ...prev, meals: { ...prev.meals, [today]: (prev.meals[today] || []).filter((m) => m.id !== entryId) } },
+        };
+      }),
+    [commit]
+  );
+
+  const setNutritionGoals = useCallback(
+    (goals) =>
+      commit((prev) => ({
+        next: {
+          ...prev,
+          nutritionGoals: {
+            cal: num(goals.cal),
+            protein: num(goals.protein),
+            carbs: num(goals.carbs),
+            fats: num(goals.fats),
+          },
+        },
+      })),
+    [commit]
+  );
+
+  // ── Profile & backup ──
+  const setProfileName = useCallback(
+    (name) => commit((prev) => ({ next: { ...prev, profileName: name.trim().slice(0, 24) } })),
+    [commit]
+  );
+
+  const setTheme = useCallback(
+    (theme) => commit((prev) => (prev.theme === theme ? null : { next: { ...prev, theme } })),
+    [commit]
+  );
+
+  const importData = useCallback(
+    (parsed) => {
+      if (!looksLikeSave(parsed)) throw new Error("This doesn't look like a Pdash backup.");
+      const next = migrate(parsed);
+      commit(() => ({ next }));
+    },
+    [commit]
+  );
 
   const dismissMilestone = useCallback(() => setPendingMilestone(null), []);
 
-  // Derive today's tasks
+  // ── Derived values ──
   const today = todayStr();
-  const todayDate = new Date();
-  const todayDone = state.completedTasks[today] || [];
-  const todayTasks = getTasksForDay(todayDate, state.every2Seed);
+  const dow = new Date().getDay();
+  const days = state.workoutPlan.days;
+  const todayLog = state.workoutLogs[today] || null;
+  const scheduledDay = days.find((d) => (d.weekdays || []).includes(dow)) || null;
+  const activeDayId = todayLog ? todayLog.dayId : scheduledDay?.id || null;
+  const activeDay = days.find((d) => d.id === activeDayId) || null;
+  const activeLog = activeDay && todayLog?.dayId === activeDay.id ? todayLog : null;
 
-  // Weekly quest state
-  const wk = weekKey(new Date());
-  const wStats = state.weeklyStats[wk] || {};
-  const wClaimed = state.weeklyQuestsClaimed[wk] || [];
-
-  const weeklyQuests = WEEKLY_QUESTS.map((q) => ({
-    ...q,
-    progressVal: q.progress(wStats),
-    completed: q.check(wStats),
-    claimed: wClaimed.includes(q.id),
-  }));
-
-  // Boss day
-  const bossDayActive = todayDate.getDay() === 0;
-  const bossClaimed = (state.completedTasks[today + "_boss"] || []).includes("claimed");
-  const allTodayDone = todayTasks.every((t) => todayDone.includes(t.id));
-
-  // Meals for today
-  const todayMeals = state.meals[today] || [];
-
-  // ── Lifting derivations ──
-  const todayLiftType = liftTypeForDate(todayDate, state.liftDay1); // 'upper'|'lower'|'rest'
-  const todayRoutine = state.routines[todayLiftType] || [];
-  const todayLiftLog = state.liftLogs[today] || { type: todayLiftType, ex: {} };
-  const liftComplete = todayDone.includes("lift");
-  const liftDoneCount = todayRoutine.filter((r) => todayLiftLog.ex[r.id]?.done).length;
-
-  // Recently logged meals, deduped by name (most recent first) — for one-tap re-logging.
-  const recentMeals = (() => {
-    const seen = new Set();
-    const out = [];
-    const dates = Object.keys(state.meals).sort().reverse();
+  const lastSessionFor = (exId) => {
+    const dates = Object.keys(state.workoutLogs).filter((d) => d < today).sort().reverse();
     for (const d of dates) {
-      const items = state.meals[d] || [];
-      for (let i = items.length - 1; i >= 0; i--) {
-        const m = items[i];
-        const key = m.name.toLowerCase().trim();
-        if (seen.has(key)) continue;
-        seen.add(key);
-        out.push(m);
-        if (out.length >= 8) return out;
-      }
-    }
-    return out;
-  })();
-
-  // Per-habit completion history: current streak + set of completed dates.
-  // Works for any daily task id (incl. "lift").
-  const habitHistory = (taskId) => {
-    const done = (d) => (state.completedTasks[d] || []).includes(taskId);
-    const completedDates = Object.keys(state.completedTasks).filter((d) => done(d));
-
-    // Streak: count back from today; don't break just because today isn't done yet.
-    let streak = 0;
-    const cursor = new Date();
-    if (!done(today)) cursor.setDate(cursor.getDate() - 1);
-    for (;;) {
-      const key = cursor.toISOString().slice(0, 10);
-      if (done(key)) {
-        streak++;
-        cursor.setDate(cursor.getDate() - 1);
-      } else break;
-    }
-    return { streak, completedDates: new Set(completedDates) };
-  };
-
-  // Most recent prior session for a routine exercise (by exId) — top weight set.
-  const lastLiftSessionFor = (exId) => {
-    const dates = Object.keys(state.liftLogs)
-      .filter((d) => d < today)
-      .sort()
-      .reverse();
-    for (const d of dates) {
-      const exLog = state.liftLogs[d]?.ex?.[exId];
-      if (exLog && exLog.sets.length) {
+      const exLog = state.workoutLogs[d]?.ex?.[exId];
+      if (exLog?.sets?.length) {
         const top = exLog.sets.reduce((a, b) => (b.weight > a.weight ? b : a));
         return { date: d, weight: top.weight, reps: top.reps, sets: exLog.sets.length };
       }
@@ -607,66 +801,67 @@ export function useGameStore() {
     return null;
   };
 
-  // Progressive-overload reminder: once per ISO week, on training days, for the
-  // compound (main) lifts that have prior history to beat.
-  const overloadDue =
-    (todayLiftType === "upper" || todayLiftType === "lower") &&
-    state.lastOverloadWeek !== wk &&
-    todayRoutine.some((r) => r.tag === "compound" && lastLiftSessionFor(r.id));
-  const overloadLifts = todayRoutine
-    .filter((r) => r.tag === "compound")
-    .map((r) => ({ name: r.name, last: lastLiftSessionFor(r.id) }))
-    .filter((x) => x.last);
+  const goalsDueToday = state.goals.filter((g) => g.deadline === today);
+  const bossDayActive = dow === 0 && goalsDueToday.length > 0;
+  const allDueDone = goalsDueToday.length > 0 && goalsDueToday.every((g) => g.completed);
+  const bossClaimed = state.bossClaimDates.includes(today);
 
   return {
     state,
-    todayTasks,
-    todayDone,
-    weeklyQuests,
+    user,
+    cloud,
+    syncStatus,
+    signOut,
+    today,
+    xpToasts,
+    pendingMilestone,
+    dismissMilestone,
+
+    addGoal,
+    updateGoal,
+    deleteGoal,
+    toggleGoal,
     bossDayActive,
     bossClaimed,
-    allTodayDone,
-    pendingMilestone,
-    xpToasts,
-    completeTask,
-    claimWeeklyQuest,
+    allDueDone,
+    goalsDueToday,
     claimBossDay,
-    dismissMilestone,
-    wk,
-    wStats,
-    todayMeals,
-    recentMeals,
-    nutritionGoals: state.nutritionGoals,
-    addMeal,
-    deleteMeal,
-    setNutritionGoals,
-    prs: state.prs,
-    importData,
 
-    // Lifting
-    liftDay1: state.liftDay1,
-    setLiftDay1,
-    routines: state.routines,
-    addRoutineExercise,
-    updateRoutineExercise,
-    removeRoutineExercise,
-    moveRoutineExercise,
-    todayLiftType,
-    todayRoutine,
-    todayLiftLog,
-    liftComplete,
-    liftDoneCount,
-    addLiftSet,
-    deleteLiftSet,
+    addDay,
+    updateDay,
+    deleteDay,
+    clearPlan,
+    moveDay,
+    addExercise,
+    updateExercise,
+    deleteExercise,
+    moveExercise,
+    scheduledDay,
+    activeDay,
+    activeLog,
+    selectWorkoutDay,
+    addSet,
+    deleteSet,
     toggleExerciseDone,
-    lastLiftSessionFor,
-    overloadDue,
-    overloadLifts,
-    dismissOverload: () => setState((prev) => ({ ...prev, lastOverloadWeek: wk })),
+    finishWorkout,
+    reopenWorkout,
+    lastSessionFor,
 
-    // Habit history + reminders
-    habitHistory,
-    reminderTimes: state.reminderTimes,
-    setReminderTime,
+    addPlanMeal,
+    renamePlanMeal,
+    deletePlanMeal,
+    movePlanMeal,
+    addPlanItem,
+    updatePlanItem,
+    deletePlanItem,
+    logPlanMeal,
+    addFood,
+    updateFood,
+    deleteFood,
+    setNutritionGoals,
+
+    setProfileName,
+    setTheme,
+    importData,
   };
 }
