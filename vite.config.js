@@ -30,7 +30,16 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
+        // .glb/.wasm are the muscle-map body and its Draco decoder: without them
+        // the 3D map would fail offline. The body is ~0.6 MB, over Workbox's 2 MB
+        // default only if the model is ever rebuilt uncompressed, so the limit is
+        // raised to keep precaching reliable.
+        globPatterns: ['**/*.{js,css,html,png,svg,woff2,glb,wasm}'],
+        // draco_decoder-*.js is Draco's 0.5 MB pure-JS fallback, only ever fetched
+        // by a browser without WebAssembly - which could not run the 3D map anyway.
+        // Keeping it out of the precache saves every install half a megabyte.
+        globIgnores: ['**/draco_decoder-*.js'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
     }),
   ],

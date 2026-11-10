@@ -49,6 +49,11 @@ export function defaultState() {
     workoutPlan: { days: [] }, // day: { id, name, weekdays:[0-6], exercises:[{ id, name, sets, reps, targetWeight, restSec, notes }] }
     workoutLogs: {}, // { date: { dayId, dayName, ex: { [exId]: { sets:[{weight,reps,pr}], done } }, completedAt } }
     workoutXpDates: [], // dates whose workout XP was already awarded (one award per day)
+
+    // Muscle map
+    importedSets: {}, // sets imported from a spreadsheet: { "YYYY-MM-DD": [{ name, weight, reps, warmup? }] }
+    exerciseMuscles: {}, // the user's own muscle assignment per exercise: { [exerciseKey]: { [group]: "direct" | "indirect" } }
+    muscleMap: { goal: "both", scheme: "zones", indirect: null, period: "rolling" }, // indirect null = the goal's default; period "rolling" = last 7 days, "week" = Mon-Sun
     prs: {}, // { exerciseNameKey: { name, maxWeight, maxVolume } }
 
     // Meals — diet plan template + daily food log
@@ -129,6 +134,28 @@ function migrateV1(old) {
   };
 }
 
+const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
+
+// Older logs stored only the exercise id; the muscle map needs the name, and the
+// plan may since have been edited, so recover names while we still can.
+function withExerciseNames(logs, days) {
+  const names = new Map();
+  for (const d of days) for (const e of d.exercises || []) names.set(e.id, e.name);
+  const out = {};
+  for (const [date, log] of Object.entries(isObj(logs) ? logs : {})) {
+    let changed = false;
+    const ex = {};
+    for (const [id, e] of Object.entries(log.ex || {})) {
+      if (!e.name && names.has(id)) {
+        ex[id] = { ...e, name: names.get(id) };
+        changed = true;
+      } else ex[id] = e;
+    }
+    out[date] = changed ? { ...log, ex } : log;
+  }
+  return out;
+}
+
 // Accepts any saved/imported/remote object and returns a complete v2 state.
 export function migrate(raw) {
   if (!raw || typeof raw !== "object") return defaultState();
@@ -146,6 +173,10 @@ export function migrate(raw) {
     loginBonusDates: Array.isArray(s.loginBonusDates) ? s.loginBonusDates : [],
     bossClaimDates: Array.isArray(s.bossClaimDates) ? s.bossClaimDates : [],
     workoutXpDates: Array.isArray(s.workoutXpDates) ? s.workoutXpDates : [],
+    workoutLogs: withExerciseNames(s.workoutLogs, Array.isArray(s.workoutPlan?.days) ? s.workoutPlan.days : []),
+    importedSets: isObj(s.importedSets) ? s.importedSets : {},
+    exerciseMuscles: isObj(s.exerciseMuscles) ? s.exerciseMuscles : {},
+    muscleMap: { ...base.muscleMap, ...(isObj(s.muscleMap) ? s.muscleMap : {}) },
   };
 }
 

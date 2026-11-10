@@ -18,6 +18,7 @@ import {
   BOSS_XP,
 } from "./gameData";
 import { addDays } from "./storage";
+import MuscleCard from "./muscles/MuscleCard";
 import { THEMES, THEME_IDS, applyTheme, themeOf } from "./themes";
 
 const SKILL_ORDER = ["fitness", "mind", "creator", "health"];
@@ -524,6 +525,8 @@ function ProfileTab({ store }) {
           })}
         </div>
       </div>
+
+      <MuscleCard store={store} />
 
       <div className="card">
         <div className="card-title">Progress to Next Level</div>

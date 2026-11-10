@@ -133,6 +133,7 @@ function SetRow({ set, index, onDelete, locked }) {
       <span className="set-num">Set {index + 1}</span>
       <span className="set-vol">{set.weight} kg × {set.reps}</span>
       {set.pr && <span className="pr-tag">PR</span>}
+      {set.warmup && <span className="pr-tag warm-tag">WARM-UP</span>}
       {!locked && (
         <button className="del-btn small" onClick={onDelete} aria-label={`Delete set ${index + 1}`}>×</button>
       )}
@@ -144,6 +145,7 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   const { addSet, deleteSet, toggleExerciseDone, lastSessionFor } = store;
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
+  const [warmup, setWarmup] = useState(false);
   const locked = !!log?.completedAt;
   const exLog = log?.ex[ex.id] || { sets: [], done: false };
   const last = lastSessionFor(ex.id);
@@ -151,9 +153,10 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   function submit(e) {
     e.preventDefault();
     if (!reps || Number(reps) <= 0) return;
-    addSet(day.id, ex, weight, reps);
+    addSet(day.id, ex, weight, reps, { warmup });
     setReps("");
-    onSetAdded(ex.restSec);
+    setWarmup(false);
+    onSetAdded(warmup ? 0 : ex.restSec);
   }
 
   return (
@@ -207,6 +210,15 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
             onChange={(e) => setReps(e.target.value)}
             aria-label={`${ex.name} reps`}
           />
+          <button
+            type="button"
+            className={`warmup-toggle ${warmup ? "on" : ""}`}
+            onClick={() => setWarmup(!warmup)}
+            aria-pressed={warmup}
+            title="Warm-up sets are saved but don't count towards your muscle map"
+          >
+            W
+          </button>
           <button type="submit" className="add-set-btn">+ SET</button>
         </form>
       )}

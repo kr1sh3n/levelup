@@ -1,0 +1,189 @@
+import { describe, expect, it } from "vitest";
+import {
+  combineSheets,
+  findHeaderRow,
+  groupByDate,
+  guessMapping,
+  inferDateOrder,
+  parseDateCell,
+  parseDelimited,
+  parseNumber,
+  rowsToSets,
+  summarizeExercises,
+} from "./importer";
+
+describe("parseDelimited", () => {
+  it("handles quotes, escaped quotes, CRLF and a BOM", () => {
+    const text = '﻿Date,Exercise,Notes\r\n2026-11-09,"Press, Bench","said ""easy"""\r\n2026-11-10,Squat,\r\n';
+    expect(parseDelimited(text)).toEqual([
+      ["Date", "Exercise", "Notes"],
+      ["2026-11-09", "Press, Bench", 'said "easy"'],
+      ["2026-11-10", "Squat", ""],
+    ]);
+  });
+
+  it("detects semicolons and tabs", () => {
+    expect(parseDelimited("a;b;c\n1;2;3")).toEqual([["a", "b", "c"], ["1", "2", "3"]]);
+    expect(parseDelimited("a\tb\n1\t2")).toEqual([["a", "b"], ["1", "2"]]);
+  });
+
+  it("skips blank lines", () => {
+    expect(parseDelimited("a,b\n\n,\n1,2\n")).toEqual([["a", "b"], ["1", "2"]]);
+  });
+});
+
+describe("guessMapping", () => {
+  it("maps a one-row-per-set export", () => {
+    const { mapping, unit } = guessMapping(["Date", "Workout Name", "Exercise Name", "Set Order", "Weight", "Reps", "RPE"]);
+    expect(mapping).toMatchObject({ date: 0, exercise: 2, weight: 4, reps: 5, sets: -1 });
+    expect(unit).toBe("kg");
+  });
+
+  it("maps a sets-count sheet and reads the unit from the header", () => {
+    const { mapping, unit } = guessMapping(["Date", "Exercise", "Sets", "Reps", "Weight (lbs)"]);
+    expect(mapping).toMatchObject({ date: 0, exercise: 1, sets: 2, reps: 3, weight: 4 });
+    expect(unit).toBe("lb");
+  });
+
+  it("maps underscore-style headers with a set type column", () => {
+    const { mapping } = guessMapping(["title", "start_time", "exercise_title", "set_index", "set_type", "weight_kg", "reps"]);
+    expect(mapping).toMatchObject({ date: 1, exercise: 2, warmup: 4, weight: 5, reps: 6 });
+  });
+});
+
+describe("parseDateCell", () => {
+  it("reads common formats", () => {
+    expect(parseDateCell("2026-11-09")).toBe("2026-11-09");
+    expect(parseDateCell("2026/11/09 18:30")).toBe("2026-11-09");
+    expect(parseDateCell("09/11/2026", "dmy")).toBe("2026-11-09");
+    expect(parseDateCell("11/09/2026", "mdy")).toBe("2026-11-09");
+    expect(parseDateCell("9.11.26")).toBe("2026-11-09");
+    expect(parseDateCell("9 Nov 2026")).toBe("2026-11-09");
+    expect(parseDateCell("Nov 9, 2026")).toBe("2026-11-09");
+    expect(parseDateCell("9-Nov-26")).toBe("2026-11-09");
+  });
+
+  it("reads Date objects and Excel serial numbers", () => {
+    expect(parseDateCell(new Date(Date.UTC(2026, 10, 9)))).toBe("2026-11-09");
+    const serial = (Date.UTC(2026, 10, 9) - Date.UTC(1899, 11, 30)) / 86400000;
+    expect(parseDateCell(serial)).toBe("2026-11-09");
+  });
+
+  it("rejects nonsense", () => {
+    expect(parseDateCell("31/02/2026")).toBeNull();
+    expect(parseDateCell("hello")).toBeNull();
+    expect(parseDateCell("")).toBeNull();
+    expect(parseDateCell(12)).toBeNull();
+  });
+});
+
+describe("inferDateOrder", () => {
+  it("decides from unambiguous values", () => {
+    expect(inferDateOrder(["13/11/2026", "02/11/2026"])).toEqual({ order: "dmy", ambiguous: false });
+    expect(inferDateOrder(["11/13/2026"])).toEqual({ order: "mdy", ambiguous: false });
+  });
+  it("flags ambiguity and defaults to day-first", () => {
+    expect(inferDateOrder(["01/02/2026", "03/04/2026"])).toEqual({ order: "dmy", ambiguous: true });
+    expect(inferDateOrder(["2026-11-09"])).toEqual({ order: "dmy", ambiguous: false });
+  });
+});
+
+describe("parseNumber", () => {
+  it("copes with decimal commas, units and ranges", () => {
+    expect(parseNumber("62,5")).toBe(62.5);
+    expect(parseNumber("80 kg")).toBe(80);
+    expect(parseNumber("8-10")).toBe(8);
+    expect(parseNumber("BW")).toBeNull();
+    expect(parseNumber(7)).toBe(7);
+  });
+});
+
+describe("rowsToSets", () => {
+  const mapping = { date: 0, exercise: 1, weight: 2, reps: 3, sets: -1, warmup: -1 };
+
+  it("makes one set per row", () => {
+    const { sets, skipped } = rowsToSets(
+      [["2026-11-09", "Bench Press", "80", "8"], ["2026-11-09", "Bench Press", "80", "7"], [], ["", "", "", ""]],
+      mapping
+    );
+    expect(sets).toHaveLength(2);
+    expect(sets[0]).toEqual({ date: "2026-11-09", name: "Bench Press", weight: 80, reps: 8, warmup: false });
+    expect(skipped).toEqual([]);
+  });
+
+  it("expands a sets column", () => {
+    const { sets } = rowsToSets([["09/11/2026", "Squat", "100", "5", "4"]], { ...mapping, sets: 4 });
+    expect(sets).toHaveLength(4);
+    expect(sets.every((s) => s.date === "2026-11-09" && s.weight === 100)).toBe(true);
+  });
+
+  it("converts pounds to kilograms", () => {
+    const { sets } = rowsToSets([["2026-11-09", "Bench Press", "225", "5"]], mapping, { unit: "lb" });
+    expect(sets[0].weight).toBe(102.1);
+  });
+
+  it("marks warm-up sets", () => {
+    const { sets } = rowsToSets(
+      [["2026-11-09", "Bench Press", "40", "10", "warmup"], ["2026-11-09", "Bench Press", "80", "8", "normal"]],
+      { ...mapping, warmup: 4 }
+    );
+    expect(sets.map((s) => s.warmup)).toEqual([true, false]);
+  });
+
+  it("reports rows it cannot use", () => {
+    const { sets, skipped } = rowsToSets(
+      [["not a date", "Squat", "100", "5"], ["2026-11-09", "", "100", "5"], ["2026-11-09", "Squat", "", ""]],
+      mapping
+    );
+    expect(sets).toEqual([]);
+    expect(skipped.map((s) => s.line)).toEqual([2, 3, 4]);
+    expect(skipped[0].reason).toContain("not a date");
+  });
+});
+
+describe("groupByDate", () => {
+  it("groups and drops falsy warmup flags", () => {
+    const g = groupByDate([
+      { date: "2026-11-09", name: "Squat", weight: 100, reps: 5, warmup: false },
+      { date: "2026-11-09", name: "Squat", weight: 60, reps: 8, warmup: true },
+    ]);
+    expect(g["2026-11-09"]).toEqual([
+      { name: "Squat", weight: 100, reps: 5 },
+      { name: "Squat", weight: 60, reps: 8, warmup: true },
+    ]);
+  });
+});
+
+describe("sheets", () => {
+  it("finds the header below a title row", () => {
+    const rows = [["My training log"], [], ["Date", "Exercise", "Sets", "Reps"], ["2026-11-09", "Squat", 4, 5]];
+    expect(findHeaderRow(rows)).toBe(2);
+  });
+
+  it("combines tabs that share columns and skips the rest", () => {
+    const head = ["Date", "Exercise", "Sets", "Reps"];
+    const out = combineSheets([
+      { name: "Oct", rows: [head, ["2026-10-01", "Squat", 4, 5]] },
+      { name: "Nov", rows: [head, ["2026-11-01", "Bench Press", 3, 8]] },
+      { name: "Notes", rows: [["Idea", "Status", "Owner"], ["x", "y", "z"]] },
+    ]);
+    expect(out.used).toEqual(["Oct", "Nov"]);
+    expect(out.skipped).toEqual(["Notes"]);
+    expect(out.body).toHaveLength(2);
+  });
+});
+
+describe("summarizeExercises", () => {
+  it("counts sets, resolves muscles and lists unknown exercises first", () => {
+    const sets = [
+      { date: "2026-11-09", name: "Bench Press (Barbell)", weight: 80, reps: 8 },
+      { date: "2026-11-09", name: "Bench Press (Barbell)", weight: 80, reps: 8 },
+      { date: "2026-11-09", name: "Zercher Carry Thing", weight: 40, reps: 1 },
+      { date: "2026-11-09", name: "Squat", weight: 40, reps: 10, warmup: true },
+    ];
+    const out = summarizeExercises(sets);
+    expect(out.map((e) => e.name)).toEqual(["Zercher Carry Thing", "Bench Press (Barbell)"]);
+    expect(out[0].match).toBeNull();
+    expect(out[1]).toMatchObject({ sets: 2, match: { name: "Bench Press" } });
+  });
+});

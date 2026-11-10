@@ -537,7 +537,7 @@ export function useGameStore(user) {
   );
 
   const addSet = useCallback(
-    (dayId, ex, weight, reps) =>
+    (dayId, ex, weight, reps, { warmup = false } = {}) =>
       commit((prev) => {
         const w = num(weight);
         const r = Math.round(num(reps));
@@ -547,21 +547,25 @@ export function useGameStore(user) {
         const exLog = s.log.ex[ex.id] || { sets: [], done: false };
         const prKey = ex.name.toLowerCase().trim();
         const prevPr = prev.prs[prKey] || { name: ex.name, maxWeight: 0, maxVolume: 0 };
-        const isWeightPr = w > 0 && w > prevPr.maxWeight;
-        const isVolumePr = w > 0 && w * r > prevPr.maxVolume;
+        // Warm-ups are logged for the record but never count towards PRs or the muscle map.
+        const isWeightPr = !warmup && w > 0 && w > prevPr.maxWeight;
+        const isVolumePr = !warmup && w > 0 && w * r > prevPr.maxVolume;
         const isPr = isWeightPr || isVolumePr;
+        const newSet = warmup ? { weight: w, reps: r, pr: false, warmup: true } : { weight: w, reps: r, pr: isWeightPr };
         const base = {
           ...prev,
-          prs: {
-            ...prev.prs,
-            [prKey]: { name: ex.name, maxWeight: Math.max(prevPr.maxWeight, w), maxVolume: Math.max(prevPr.maxVolume, w * r) },
-          },
+          prs: warmup
+            ? prev.prs
+            : {
+                ...prev.prs,
+                [prKey]: { name: ex.name, maxWeight: Math.max(prevPr.maxWeight, w), maxVolume: Math.max(prevPr.maxVolume, w * r) },
+              },
           workoutLogs: {
             ...prev.workoutLogs,
             [s.today]: {
               ...s.log,
               dayName: s.day.name,
-              ex: { ...s.log.ex, [ex.id]: { ...exLog, sets: [...exLog.sets, { weight: w, reps: r, pr: isWeightPr }] } },
+              ex: { ...s.log.ex, [ex.id]: { ...exLog, name: ex.name, sets: [...exLog.sets, newSet] } },
             },
           },
         };
@@ -768,6 +772,39 @@ export function useGameStore(user) {
     [commit]
   );
 
+  // ── Muscle map ──
+  // Imported sets replace whatever was imported for the same dates, so importing
+  // the same sheet twice never double-counts.
+  const importWorkoutSets = useCallback(
+    (byDate, { replaceAll = false } = {}) =>
+      commit((prev) => ({
+        next: { ...prev, importedSets: { ...(replaceAll ? {} : prev.importedSets), ...byDate } },
+      })),
+    [commit]
+  );
+
+  const clearImportedSets = useCallback(
+    () => commit((prev) => (Object.keys(prev.importedSets).length ? { next: { ...prev, importedSets: {} } } : null)),
+    [commit]
+  );
+
+  // muscles = { group: "direct" | "indirect" }; an empty object forgets the assignment.
+  const setExerciseMuscles = useCallback(
+    (key, muscles) =>
+      commit((prev) => {
+        const rest = { ...prev.exerciseMuscles };
+        if (muscles && Object.keys(muscles).length) rest[key] = muscles;
+        else delete rest[key];
+        return { next: { ...prev, exerciseMuscles: rest } };
+      }),
+    [commit]
+  );
+
+  const setMuscleMapSettings = useCallback(
+    (patch) => commit((prev) => ({ next: { ...prev, muscleMap: { ...prev.muscleMap, ...patch } } })),
+    [commit]
+  );
+
   const importData = useCallback(
     (parsed) => {
       if (!looksLikeSave(parsed)) throw new Error("This doesn't look like a Pdash backup.");
@@ -862,6 +899,10 @@ export function useGameStore(user) {
 
     setProfileName,
     setTheme,
+    importWorkoutSets,
+    clearImportedSets,
+    setExerciseMuscles,
+    setMuscleMapSettings,
     importData,
   };
 }
