@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import confetti from "canvas-confetti";
 import "./App.css";
 import AuthGate from "./AuthGate";
+import { deleteMyAccount } from "./cloud";
 import { useGameStore } from "./useGameStore";
 import MealsTab from "./MealsTab";
 import GymTab from "./GymTab";
@@ -577,7 +578,51 @@ function ProfileTab({ store, setTab }) {
         <input ref={fileRef} type="file" accept="application/json,.json" onChange={onImportFile} style={{ display: "none" }} />
       </div>
 
+      {user && <DangerZone />}
+
       {msg && <div className={`form-msg floating ${msg.ok ? "ok" : "err"}`}>{msg.text}</div>}
+    </div>
+  );
+}
+
+// Deleting an account is irreversible, so it asks twice: once to reveal the
+// button, once to confirm. The export button sits right above it on purpose.
+function DangerZone() {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+
+  async function remove() {
+    if (!window.confirm("Permanently delete your account, your training history and your login? This cannot be undone.")) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await deleteMyAccount();
+      // signOut inside deleteMyAccount drops the session, which unmounts this.
+    } catch (e) {
+      setErr(e.message || "Could not delete the account.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card danger-card">
+      <div className="card-title">Your account</div>
+      <p className="mm-fine">
+        What you log is stored in your account and can be read by whoever runs this app.{" "}
+        <a href="./privacy.html" target="_blank" rel="noreferrer">What is stored</a>
+      </p>
+      {!armed ? (
+        <button type="button" className="claim-btn ghost" onClick={() => setArmed(true)}>DELETE ACCOUNT</button>
+      ) : (
+        <div className="form-actions">
+          <button type="button" className="claim-btn danger" onClick={remove} disabled={busy}>
+            {busy ? "DELETING…" : "YES, DELETE EVERYTHING"}
+          </button>
+          <button type="button" className="claim-btn ghost" onClick={() => setArmed(false)} disabled={busy}>CANCEL</button>
+        </div>
+      )}
+      {err && <div className="form-msg err">{err}</div>}
     </div>
   );
 }

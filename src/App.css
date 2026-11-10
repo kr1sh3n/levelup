@@ -2001,3 +2001,23 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 @media (hover: none) {
   .tab-btn:hover, .mm-view-btn:hover, .suggest-chip:hover { color: inherit; }
 }
+
+
+/* ═══════════════════ ACCOUNTS: CONSENT & DELETION ═══════════════════ */
+.consent-row {
+  display: flex; gap: 10px; align-items: flex-start; margin: 10px 0 12px;
+  font-size: 17px; line-height: 1.35; color: var(--text-muted); cursor: pointer;
+}
+.consent-row input[type="checkbox"] {
+  flex: 0 0 auto; width: 20px; height: 20px; margin-top: 1px;
+  accent-color: var(--accent-hot); cursor: pointer;
+}
+.consent-row a { color: var(--purple-bright); }
+
+.danger-card { border-color: rgba(255, 77, 141, 0.35); }
+.danger-card .form-actions { display: flex; gap: 8px; }
+.danger-card .form-actions .claim-btn { flex: 1; margin: 0; }
+.claim-btn.danger {
+  background: linear-gradient(135deg, #c4184c, #8a1036);
+  box-shadow: 0 2px 12px rgba(196, 24, 76, 0.4);
+}

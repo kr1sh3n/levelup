@@ -27,10 +27,29 @@ Open the printed URL (default http://localhost:5173). Without Supabase configure
 Logins, per-user private data, and sync across devices.
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. In **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql). It creates the `user_state` table and row-level-security policies so each user can only read and write their own data.
+2. In **SQL Editor**, run [`supabase/schema.sql`](supabase/schema.sql). It creates the `user_state` and `profiles` tables plus row-level-security policies, so each user can only read and write their own data.
 3. In **Authentication → URL Configuration**, set the **Site URL** to where the app is hosted (e.g. `https://<username>.github.io/<repo>/`) and add `http://localhost:5173` to **Redirect URLs** for local development. Email/password sign-in is enabled by default.
 4. Copy `.env.example` to `.env.local` and fill in your project's URL and **anon** key (Project Settings → API). The anon key is designed to be public; data is protected by the RLS policies.
 5. `npm run dev` — you'll now see the sign-in screen.
+
+### Operator access
+
+The schema also supports reading every account's data, for running and improving the app:
+
+1. Sign up through the app yourself, then add your account as an admin:
+   ```sql
+   insert into public.app_admins (user_id)
+   select id from auth.users where email = 'you@example.com';
+   ```
+2. Use [`supabase/admin-queries.sql`](supabase/admin-queries.sql) in the SQL Editor — signups, activity per account, and every logged set flattened into rows.
+
+Three things this deliberately does:
+
+- **Users are told.** Creating an account requires ticking a box that says the operator can read what they log, and the wording they agreed to is stored with the timestamp. Anyone who signed up earlier is asked once before they can continue. [`public/privacy.html`](public/privacy.html) spells out what is kept.
+- **Admins can read, never write.** There is no admin insert, update or delete policy on `user_state`.
+- **The `service_role` key stays out of the app.** It bypasses every policy, so anyone who found it in the bundle could read and erase all data. Only the `anon` key is ever shipped; access is granted by adding a row to `app_admins`, not by holding a key.
+
+Users can delete their account, their save and their login from Profile at any time.
 
 How sync works: every change is saved immediately to this device and pushed to your account shortly after. When you return to the app (or come back online) it pulls any newer save from your other devices. If you edit on two devices while offline, the most recent save wins. Progress saved in this browser before accounts existed is carried into your account the first time you sign in on it (unless the account already has cloud data).
 

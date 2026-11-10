@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pdash — What is stored</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; padding: 32px 20px 64px; background: #0b0714; color: #f2e7fb;
+        font-family: 'VT323', monospace; font-size: 21px; line-height: 1.5;
+      }
+      main { max-width: 620px; margin: 0 auto; }
+      h1 { font-family: 'Press Start 2P', monospace; font-size: 18px; line-height: 1.6; color: #e3b8ff; margin: 0 0 6px; }
+      h2 { font-family: 'Press Start 2P', monospace; font-size: 12px; line-height: 1.6; color: #c04bf0; margin: 30px 0 8px; }
+      .sub { color: #9a84b5; margin: 0 0 24px; }
+      ul { padding-left: 22px; }
+      li { margin-bottom: 5px; }
+      strong { color: #ff2d95; font-weight: normal; }
+      a { color: #e3b8ff; }
+      .box { border: 1px solid rgba(190, 90, 220, 0.42); border-radius: 4px; padding: 14px 16px; background: rgba(40, 22, 62, 0.5); }
+      footer { margin-top: 34px; color: #9a84b5; font-size: 18px; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>What Pdash stores</h1>
+      <p class="sub">Last updated 11 November 2026. Plain English, because you should be able to read it.</p>
+
+      <div class="box">
+        <strong>The short version.</strong> If you make an account, what you log is saved on a server and
+        the person who runs this app can read it. If that is not okay, use it without an account — then
+        nothing leaves your device.
+      </div>
+
+      <h2>Without an account</h2>
+      <p>
+        Everything stays in your browser's local storage on that one device. Nothing is uploaded, there is
+        no tracking, no analytics and no third party involved. Clearing your browser data erases it, so use
+        <strong>Export Backup</strong> in Profile if you care about it.
+      </p>
+
+      <h2>With an account</h2>
+      <p>These are stored on Supabase, the hosting service this app uses:</p>
+      <ul>
+        <li>Your <strong>email address</strong>, and a securely hashed password — never the password itself.</li>
+        <li>Your <strong>training data</strong>: workouts, sets, weights, reps, reps-in-reserve and personal records.</li>
+        <li>Your <strong>meals and goals</strong>, including calories and macros if you log them.</li>
+        <li>Your <strong>profile</strong>: display name, level, XP, streaks, and your chosen theme.</li>
+        <li>The <strong>date you agreed</strong> to this, and the wording you agreed to.</li>
+      </ul>
+
+      <h2>Who can see it</h2>
+      <p>
+        <strong>You</strong>, on any device you sign in to. And <strong>the person who runs this app</strong>,
+        who can read the accounts and training data described above in order to operate and improve it.
+      </p>
+      <p>
+        Other users cannot see your data. The database enforces that with row-level security, not just a
+        rule in the app's code. Your data is not sold, and it is not shared with advertisers or any other
+        third party.
+      </p>
+
+      <h2>Deleting it</h2>
+      <p>
+        Profile → <strong>Delete account</strong> removes your save, your profile and your login. It is
+        immediate and cannot be undone, so export a backup first if you want to keep a copy.
+      </p>
+
+      <h2>Keeping it safe</h2>
+      <p>
+        Traffic is encrypted in transit, and access is controlled per account at the database level.
+        No system is perfect: do not store anything here you could not bear to lose or to have exposed.
+        This is a personal project, not a company with a security team.
+      </p>
+
+      <h2>Children</h2>
+      <p>Not intended for under-13s. Please do not create an account if you are younger than that.</p>
+
+      <h2>Changes</h2>
+      <p>
+        If what is collected or who can see it changes, this page is updated and you will be asked to
+        agree again. What you previously agreed to is kept on record and is not rewritten.
+      </p>
+
+      <footer><a href="./">← Back to Pdash</a></footer>
+    </main>
+  </body>
+</html>

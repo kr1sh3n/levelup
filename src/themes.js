@@ -60,6 +60,16 @@ export function themeOf(id) {
   return THEMES[id] ? id : "arcade";
 }
 
+// The theme remembered on this device. The sign-in screen renders before any
+// user state exists, so it has nothing else to go on.
+export function savedTheme() {
+  try {
+    return themeOf(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return "arcade";
+  }
+}
+
 // Applies the theme to the page and remembers it on this device, so the
 // sign-in screen and first paint already use it (see the script in index.html).
 export function applyTheme(id) {
