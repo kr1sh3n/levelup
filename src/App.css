@@ -20,6 +20,11 @@
   --font-display: 'Press Start 2P', 'Orbitron', sans-serif;
   --font-body: 'VT323', 'Rajdhani', monospace;
 
+  /* Width of the app column, shared by the shell, the tab bar and the muscle
+     map overlay so they can never disagree. Phone-first; it grows a little on
+     larger screens rather than stranding a 480px strip on a desktop monitor. */
+  --app-width: 480px;
+
   /* Theme tokens — default "Arcade Red". Themes below override these. */
   --accent: #dc2626;
   --accent-dark: #b91c1c;
@@ -127,8 +132,11 @@ body {
 }
 
 .app {
-  max-width: 480px;
+  max-width: var(--app-width);
   margin: 0 auto;
+  /* 100dvh tracks the iOS URL bar as it shows and hides; the vh line is the
+     fallback for browsers that do not know dynamic viewport units. */
+  min-height: 100vh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -159,7 +167,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 50;
-  padding: 18px 20px 16px;
+  padding: calc(18px + env(safe-area-inset-top, 0px)) 20px 16px;
   background: rgba(var(--base-rgb),  0.75);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -291,7 +299,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 480px;
+  max-width: var(--app-width);
   background: rgba(var(--base-rgb),  0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -338,7 +346,9 @@ body {
   z-index: 1;
   flex: 1;
   overflow-y: auto;
-  padding: 18px 16px 100px;
+  /* Room for the fixed tab bar, plus the home indicator on phones that have one. */
+  padding: 18px 16px calc(100px + env(safe-area-inset-bottom, 0px));
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Cards ── */
@@ -1757,12 +1767,12 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 
 .mm-overlay {
   position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column;
-  max-width: 520px; margin: 0 auto; background: var(--bg);
+  max-width: var(--app-width); margin: 0 auto; background: var(--bg);
   background-image: radial-gradient(circle at 50% 28%, rgba(var(--accent-rgb), 0.2), transparent 62%);
   border-left: 1px solid var(--border); border-right: 1px solid var(--border);
 }
 .mm-loading { align-items: center; justify-content: center; color: var(--text-muted); font-size: 22px; }
-.mm-top { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 6px; }
+.mm-top { display: flex; align-items: center; justify-content: space-between; padding: calc(12px + env(safe-area-inset-top, 0px)) 16px 6px; }
 .mm-title { font-family: var(--font-display); font-size: 12px; color: var(--purple-light); letter-spacing: 1px; }
 .mm-controls { padding: 0 14px 6px; display: flex; flex-direction: column; gap: 8px; }
 .mm-period { display: flex; align-items: center; gap: 8px; }
@@ -1793,11 +1803,6 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
   transition: opacity 0.18s ease;
 }
 .mm-label.on { color: var(--purple); border-color: var(--purple); background: rgba(var(--base-rgb), 0.9); }
-/* Narrow screens: the view buttons need the whole bottom row, so the counts
-   move to the top-right of the stage instead of colliding with them. */
-@media (max-width: 560px) {
-  .mm-stats { top: 6px; bottom: auto; }
-}
 @media (prefers-reduced-motion: reduce) { .mm-label { transition: none; } }
 .mm-stats {
   position: absolute; right: 10px; bottom: 10px; font-size: 16px; color: var(--text-muted);
@@ -1814,7 +1819,7 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-legend-item em { font-style: normal; opacity: 0.7; }
 .mm-swatch { display: inline-block; width: 12px; height: 12px; flex-shrink: 0; border: 1px solid rgba(var(--hilite-rgb), 0.35); }
 
-.mm-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px 28px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.mm-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px calc(28px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .mm-note { padding: 9px 12px; margin-bottom: 12px; font-size: 17px; border: 1px solid var(--border-strong); border-radius: 3px; background: rgba(var(--well-rgb), 0.25); }
 .mm-note.warn { border-color: var(--orange); }
 .mm-note .link-btn { background: none; border: none; font-size: 17px; text-decoration: underline; padding: 0; }
@@ -1941,3 +1946,58 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 @media (min-width: 560px) { .stats-card-canvas { max-width: 360px; } }
 
 .mm-review-sub.warn { color: var(--orange); }
+
+
+/* ═══════════════════ RESPONSIVE SHELL ═══════════════════ */
+
+/* Landscape notches: keep content clear of the rounded corners and the camera. */
+.app, .tabbar, .mm-overlay {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Small phones (iPhone SE and narrow Androids): claw back horizontal padding
+   so cards are not squeezed into a thin strip. */
+@media (max-width: 380px) {
+  .page { padding-left: 11px; padding-right: 11px; }
+  .header { padding-left: 14px; padding-right: 14px; }
+  .mm-scroll { padding-left: 10px; padding-right: 10px; }
+}
+
+/* Short viewports (landscape phones). The 3D stage and the legend have to give
+   way, or the list below them collapses to a few unusable pixels. */
+@media (max-height: 560px) and (orientation: landscape) {
+  .mm-stage { flex: 0 0 clamp(130px, 38vh, 240px); }
+  .mm-legend { padding: 3px 10px; gap: 1px 10px; }
+  .mm-legend-item { font-size: 14px; }
+  .mm-modes { margin-bottom: 4px; }
+  .mm-period-static { padding: 2px 0 0; }
+  .header { padding-top: calc(10px + env(safe-area-inset-top, 0px)); padding-bottom: 10px; }
+  .page { padding-top: 12px; }
+}
+
+/* Tablets and desktops: a wider column, and the page behind it stops looking
+   like an accident. */
+@media (min-width: 700px) {
+  :root { --app-width: 560px; }
+  body { background-attachment: fixed; }
+  .app { box-shadow: inset 0 0 120px rgba(var(--shadow-rgb), 0.7), 0 0 60px rgba(var(--shadow-rgb), 0.55); }
+}
+
+@media (min-width: 1100px) {
+  :root { --app-width: 620px; }
+}
+
+/* Narrow screens: the view buttons need the whole bottom row, so the set
+   counts move to the top-right of the stage instead of colliding with them.
+   Must come after the base .mm-stats rule - a media query adds no specificity,
+   so an earlier one loses to a later plain rule. */
+@media (max-width: 560px) {
+  .mm-stats { top: 6px; bottom: auto; }
+}
+
+/* Desktop pointers get a visible hit-state; touch devices should not, since
+   :hover sticks after a tap. */
+@media (hover: none) {
+  .tab-btn:hover, .mm-view-btn:hover, .suggest-chip:hover { color: inherit; }
+}
