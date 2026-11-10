@@ -8,6 +8,7 @@ import {
   parseDateCell,
   parseDelimited,
   parseNumber,
+  parseReps,
   rowsToSets,
   summarizeExercises,
 } from "./importer";
@@ -200,5 +201,65 @@ describe("summarizeExercises", () => {
     expect(out.map((e) => e.name)).toEqual(["Zercher Carry Thing", "Bench Press (Barbell)"]);
     expect(out[0].match).toBeNull();
     expect(out[1]).toMatchObject({ sets: 2, match: { name: "Bench Press" } });
+  });
+});
+
+
+// Shapes taken from a real exported gym log: units written into the weight
+// cell, rep ranges, a mistyped year among a column of same-year dates, a
+// free-text date, blank weights, and a RIR column. The numbers and dates here
+// and numbers here are invented; only the kinds of mess are real.
+describe("a messy real-world export", () => {
+  const headers = ["Date", "Exercise", "Reps", "Weight", "RIR"];
+  const body = [
+    ["3/7/24", "Triceps pushdown", "12", "20 kg", "2"],
+    ["21/9/24", "Skull crushers", "8-10", "", ""],
+    ["21/9/24", "Flat dumbbell press", "9", "27.5 kg", "1"],
+    ["17/9/05", "Lat pulldown", "10", "40 kg", ""],
+    ["5 Jan (year not stated)", "Shoulder press", "6", "10 kg", "3"],
+  ];
+
+  const g = guessMapping(headers);
+  const out = rowsToSets(body, g.mapping, { order: inferDateOrder(body.map((r) => r[0])).order, rirScale: g.rirScale, today: "2026-11-10" });
+
+  it("maps every column, including RIR", () => {
+    expect(g.mapping).toMatchObject({ date: 0, exercise: 1, reps: 2, weight: 3, rir: 4 });
+    expect(g.rirScale).toBe("rir");
+  });
+
+  it("reads day-first dates and strips the unit off the weight", () => {
+    expect(out.sets[0]).toMatchObject({ date: "2024-07-03", weight: 20, reps: 12, rir: 2 });
+    expect(out.sets[2].weight).toBe(27.5);
+  });
+
+  it("takes the midpoint of a rep range instead of the low end", () => {
+    expect(parseReps("8-10")).toBe(9);
+    expect(parseReps("8 to 12")).toBe(10);
+    expect(parseReps("10")).toBe(10);
+    expect(parseReps("")).toBe(null);
+    expect(out.sets[1].reps).toBe(9);
+  });
+
+  it("keeps a set that has reps but no weight", () => {
+    expect(out.sets[1]).toMatchObject({ name: "Skull crushers", weight: 0 });
+  });
+
+  it("skips a date it cannot read, and says which", () => {
+    expect(out.skipped).toHaveLength(1);
+    expect(out.skipped[0].reason).toMatch(/couldn't read the date/);
+  });
+
+  it("flags a mistyped year rather than importing it silently", () => {
+    // A mistyped year parses cleanly and would drag the charts two decades back.
+    expect(out.suspect).toHaveLength(1);
+    expect(out.suspect[0]).toMatchObject({ date: "2005-09-17" });
+    expect(out.suspect[0].reason).toMatch(/more than 5 years old/);
+    // It is still imported - the user decides, the importer only points at it.
+    expect(out.sets.some((x) => x.date === "2005-09-17")).toBe(true);
+  });
+
+  it("flags a future date too", () => {
+    const later = rowsToSets([["1/6/27", "Squat", "5", "100 kg", ""]], g.mapping, { order: "dmy", today: "2026-11-10" });
+    expect(later.suspect[0].reason).toMatch(/in the future/);
   });
 });

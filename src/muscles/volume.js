@@ -20,12 +20,23 @@ export function weekStart(s) {
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+// "Nov 26", with the year when it is not the current one - a two-year-old
+// import otherwise reads as if it happened last week.
+export function dayLabel(d, today = new Date().toISOString().slice(0, 10)) {
+  const a = parseDay(d);
+  const year = a.getUTCFullYear ? a.getUTCFullYear() : a.getFullYear();
+  const suffix = String(year) === today.slice(0, 4) ? "" : ` ${year}`;
+  return `${MONTHS[a.getMonth()]} ${a.getDate()}${suffix}`;
+}
+
 export function rangeLabel(from, to) {
   const a = parseDay(from);
   const b = parseDay(to);
   const left = `${MONTHS[a.getMonth()]} ${a.getDate()}`;
   const right = a.getMonth() === b.getMonth() ? `${b.getDate()}` : `${MONTHS[b.getMonth()]} ${b.getDate()}`;
-  return `${left}–${right}`;
+  const year = b.getFullYear();
+  const suffix = year === new Date().getFullYear() ? "" : ` ${year}`;
+  return `${left}–${right}${suffix}`;
 }
 
 // kind "week": Monday-Sunday, `offset` weeks back from the current one.

@@ -215,6 +215,19 @@ export function inferDateOrder(cells) {
   return { order: "dmy", ambiguous: numeric > 0 };
 }
 
+// "8-10" and "8 to 10" mean a range: take the midpoint rather than silently
+// keeping the low end, which understated every ranged entry.
+export function parseReps(v) {
+  const str = String(v ?? "").trim();
+  const m = str.match(/^(\d+(?:\.\d+)?)\s*(?:-|–|—|to)\s*(\d+(?:\.\d+)?)$/i);
+  if (m) {
+    const lo = parseFloat(m[1]);
+    const hi = parseFloat(m[2]);
+    if (hi >= lo) return Math.round((lo + hi) / 2);
+  }
+  return parseNumber(v);
+}
+
 export function parseNumber(v) {
   if (typeof v === "number") return Number.isFinite(v) ? v : null;
   const m = String(v ?? "").trim().replace(",", ".").match(/-?\d+(\.\d+)?/);
@@ -232,9 +245,23 @@ function toRir(value, scale) {
   return Math.max(0, Math.min(10, Math.round(n)));
 }
 
-export function rowsToSets(body, mapping, { order = "dmy", unit = "kg", rirScale = "rir" } = {}) {
+// A date can parse cleanly and still be wrong: a mistyped year ("22/10/05"
+// among a column of /24 dates) imports as 2005 and drags the history charts
+// nineteen years back. Anything outside this window is flagged for review
+// rather than silently accepted.
+const MAX_AGE_YEARS = 5;
+
+function dateWarning(date, today) {
+  const years = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 31557600000;
+  if (years < -0.01) return "is in the future";
+  if (years > MAX_AGE_YEARS) return `is more than ${MAX_AGE_YEARS} years old`;
+  return null;
+}
+
+export function rowsToSets(body, mapping, { order = "dmy", unit = "kg", rirScale = "rir", today = new Date().toISOString().slice(0, 10) } = {}) {
   const sets = [];
   const skipped = [];
+  const suspect = [];
   body.forEach((row, i) => {
     if (row.every(isBlank)) return;
     const line = i + 2;
@@ -251,7 +278,7 @@ export function rowsToSets(body, mapping, { order = "dmy", unit = "kg", rirScale
     }
     let weight = mapping.weight >= 0 ? parseNumber(row[mapping.weight]) : null;
     if (weight != null && unit === "lb") weight = Math.round(weight * 0.45359237 * 10) / 10;
-    const reps = mapping.reps >= 0 ? parseNumber(row[mapping.reps]) : null;
+    const reps = mapping.reps >= 0 ? parseReps(row[mapping.reps]) : null;
 
     let count = 1;
     if (mapping.sets >= 0) {
@@ -265,13 +292,15 @@ export function rowsToSets(body, mapping, { order = "dmy", unit = "kg", rirScale
       skipped.push({ line, reason: "no reps or weight" });
       return;
     }
+    const warn = dateWarning(date, today);
+    if (warn) suspect.push({ line, date, raw: cellStr(rawDate), reason: `the date ${warn}` });
     const warmup = mapping.warmup >= 0 && isWarmupCell(row[mapping.warmup]);
     const rir = mapping.rir >= 0 ? toRir(parseNumber(row[mapping.rir]), rirScale) : null;
     for (let k = 0; k < count; k++) {
       sets.push({ date, name, weight: weight ?? 0, reps: reps ?? 0, warmup, rir });
     }
   });
-  return { sets, skipped };
+  return { sets, skipped, suspect };
 }
 
 export function groupByDate(sets) {

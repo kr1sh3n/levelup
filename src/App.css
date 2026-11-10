@@ -1939,3 +1939,5 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .stats-card .form-actions { display: flex; gap: 8px; }
 .stats-card .form-actions .claim-btn { flex: 1; margin: 0; }
 @media (min-width: 560px) { .stats-card-canvas { max-width: 360px; } }
+
+.mm-review-sub.warn { color: var(--orange); }

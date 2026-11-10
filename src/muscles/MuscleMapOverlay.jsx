@@ -3,7 +3,7 @@ import MuscleViewer from "./MuscleViewer";
 import ImportDialog, { AssignDialog } from "./ImportDialog";
 import { GROUP_IDS, MUSCLE_GROUPS, groupLabel } from "./taxonomy";
 import { GOALS, GOAL_IDS, ZONE_KEYS, ZONE_LABEL, colorFor, goalOf, legendItems, recoveryColorFor, recoveryLegendItems, zoneFor } from "./targets";
-import { HARD_SET_RIR, collectSets, computeVolumes, dataBounds, daysBetween, latestOffset, makeResolver, periodRange, rangeLabel, weekStart, weeklyHistory } from "./volume";
+import { HARD_SET_RIR, collectSets, computeVolumes, dataBounds, daysBetween, latestOffset, makeResolver, dayLabel, periodRange, rangeLabel, weekStart, weeklyHistory } from "./volume";
 import { makeDemoSets } from "./demo";
 import { agoText, computeRecovery, readyList, recoveryText, restingList } from "./recovery";
 import { balanceChecks, describeGroup, focusList, overList, suggestExercises, targetBand } from "./insights";
@@ -13,7 +13,7 @@ const round1 = (n) => Math.round(n * 10) / 10;
 const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 function periodTitle(kind, offset, from, to) {
-  if (kind === "rolling") return offset === 0 ? `Last 7 days · ${rangeLabel(from, to)}` : `7 days to ${rangeLabel(from, to).split("–").at(-1)}`;
+  if (kind === "rolling") return offset === 0 ? `Last 7 days · ${rangeLabel(from, to)}` : `7 days to ${dayLabel(to)}`;
   if (offset === 0) return `This week · ${rangeLabel(from, to)}`;
   if (offset === 1) return `Last week · ${rangeLabel(from, to)}`;
   return `Week of ${rangeLabel(from, to)}`;

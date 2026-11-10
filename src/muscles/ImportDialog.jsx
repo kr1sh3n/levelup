@@ -210,7 +210,7 @@ export default function ImportDialog({ store, onClose, onImported }) {
 
   const ready = !!mapping && mapping.date >= 0 && mapping.exercise >= 0;
   const result = useMemo(
-    () => (ready ? rowsToSets(table.body, mapping, { order: order.order, unit, rirScale }) : { sets: [], skipped: [] }),
+    () => (ready ? rowsToSets(table.body, mapping, { order: order.order, unit, rirScale }) : { sets: [], skipped: [], suspect: [] }),
     [ready, table, mapping, order.order, unit, rirScale]
   );
   const overrides = store.state.exerciseMuscles;
@@ -310,6 +310,13 @@ export default function ImportDialog({ store, onClose, onImported }) {
                   <strong>{result.sets.length}</strong> sets from <strong>{new Set(dates).size}</strong> days
                   {dates.length > 0 && <> · {dates[0]} to {dates.at(-1)}</>}
                 </div>
+                {result.suspect?.length > 0 && (
+                  <div className="mm-review-sub warn">
+                    {result.suspect.length} row{result.suspect.length === 1 ? "" : "s"} with an odd date
+                    {" "}(row {result.suspect[0].line}: &quot;{result.suspect[0].raw}&quot; {result.suspect[0].reason})
+                    {" "}&mdash; check for a mistyped year before importing.
+                  </div>
+                )}
                 {result.skipped.length > 0 && (
                   <div className="mm-review-sub">
                     {result.skipped.length} row{result.skipped.length === 1 ? "" : "s"} skipped

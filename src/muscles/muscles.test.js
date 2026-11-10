@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GROUP_IDS, MUSCLE_GROUPS, isGroup } from "./taxonomy";
 import { LIBRARY, exerciseKey, matchExercise, resolveExercise } from "./exercises";
-import { computeVolumes, collectSets, periodRange, rangeLabel, weekStart, weeklyHistory, latestWeekOffset, latestOffset } from "./volume";
+import { computeVolumes, collectSets, dayLabel, periodRange, rangeLabel, weekStart, weeklyHistory, latestWeekOffset, latestOffset } from "./volume";
 import { GOALS, GOAL_IDS, ZONE_KEYS, colorFor, legendItems, zoneFor } from "./targets";
 import { balanceChecks, describeGroup, focusList, overList, suggestExercises } from "./insights";
 import { makeDemoSets } from "./demo";
@@ -111,6 +111,10 @@ describe("dates", () => {
   it("labels ranges", () => {
     expect(rangeLabel("2026-11-09", "2026-11-15")).toBe("Nov 9–15");
     expect(rangeLabel("2026-10-26", "2026-11-01")).toBe("Oct 26–Nov 1");
+    // An older import must not read as if it were this year.
+    expect(rangeLabel("2024-11-04", "2024-11-10")).toBe("Nov 4–10 2024");
+    expect(dayLabel("2026-11-10", "2026-11-10")).toBe("Nov 10");
+    expect(dayLabel("2024-11-10", "2026-11-10")).toBe("Nov 10 2024");
   });
 });
 

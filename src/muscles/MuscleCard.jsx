@@ -2,7 +2,7 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { GROUP_IDS, groupLabel } from "./taxonomy";
 import { GOALS, colorFor, goalOf } from "./targets";
-import { collectSets, computeVolumes, latestOffset, periodRange, rangeLabel } from "./volume";
+import { collectSets, computeVolumes, latestOffset, dayLabel, periodRange, rangeLabel } from "./volume";
 import { focusList } from "./insights";
 
 // The 3D viewer (and three.js) is only downloaded when the map is opened.
@@ -29,7 +29,7 @@ export default function MuscleCard({ store, setTab }) {
       .slice(0, 3);
     const label =
       kind === "rolling"
-        ? offset === 0 ? "Last 7 days" : `7 days to ${rangeLabel(from, to).split("–").at(-1)}`
+        ? offset === 0 ? "Last 7 days" : `7 days to ${dayLabel(to)}`
         : offset === 0 ? "This week" : `Week of ${rangeLabel(from, to)}`;
     return { offset, label, v, top, focus: focusList(v, goal, 3) };
   }, [workoutLogs, importedSets, workoutPlan, exerciseMuscles, today, indirect, goal, kind]);

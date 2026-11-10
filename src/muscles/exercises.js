@@ -9,7 +9,7 @@ import { isGroup } from "./taxonomy";
 // [name, aliases separated by "|", direct groups, indirect groups]
 const RAW = [
   // Chest
-  ["Bench Press", "bench", "chest", "front_delts triceps"],
+  ["Bench Press", "bench|flat bench press|flat chest press|flat dumbbell press|flat db press|dumbbell bench press|smith machine bench press|flat smith machine press|paused bench press", "chest", "front_delts triceps"],
   ["Incline Bench Press", "incline press|incline chest press|low incline press", "chest", "front_delts triceps"],
   ["Decline Bench Press", "decline press", "chest", "triceps front_delts"],
   ["Chest Press", "machine chest press|hammer strength chest press|converging chest press", "chest", "front_delts triceps"],
@@ -31,7 +31,7 @@ const RAW = [
   ["Pull Up", "pullup|wide grip pull up|neutral grip pull up|assisted pull up|weighted pull up", "lats", "biceps upper_back forearms rear_delts"],
   ["Chin Up", "chinup|underhand pull up", "lats biceps", "upper_back forearms"],
   ["Lat Pulldown", "pulldown|wide grip pulldown|close grip pulldown|v bar pulldown|neutral grip pulldown|cable pulldown", "lats", "biceps upper_back"],
-  ["Bent Over Row", "row|barbell row|pendlay row|dumbbell row|cable row|machine row|low row|t bar row|chest supported row|seal row|meadows row|bent row|iso row", "upper_back lats", "biceps rear_delts lower_back"],
+  ["Bent Over Row", "row|barbell row|pendlay row|dumbbell row|cable row|machine row|machine lat row|low row|t bar row|chest supported row|seal row|meadows row|bent row|iso row|close grip row|wide grip row|single arm row|one arm row", "upper_back lats", "biceps rear_delts lower_back"],
   ["Inverted Row", "bodyweight row|australian pull up|ring row", "upper_back lats", "biceps rear_delts"],
   ["Straight Arm Pulldown", "straight arm pushdown|lat prayer", "lats", "triceps"],
   ["Deadlift", "conventional deadlift|sumo deadlift|trap bar deadlift|barbell deadlift", "glutes hamstrings lower_back", "quads traps upper_back forearms adductors"],
@@ -47,6 +47,7 @@ const RAW = [
   ["Skull Crusher", "skullcrusher|lying triceps extension|ez bar skull crusher|french press", "triceps", ""],
   ["Overhead Triceps Extension", "tricep extension|triceps extension|overhead tricep extension|cable overhead extension", "triceps", ""],
   ["Close Grip Bench Press", "cgbp|close grip bench|close grip press", "triceps chest", "front_delts"],
+  ["JM Press", "jm bench press", "triceps", "chest front_delts"],
   ["Triceps Kickback", "tricep kickback", "triceps", ""],
   ["Wrist Curl", "forearm curl|barbell wrist curl", "forearms", ""],
   ["Reverse Wrist Curl", "wrist extension|reverse wrist extension", "forearms", ""],
@@ -96,7 +97,7 @@ const roles = (direct, indirect) => {
 const NOISE = new Set([
   "barbell", "dumbbell", "db", "bb", "cable", "machine", "smith", "ez", "kettlebell", "kb",
   "band", "bodyweight", "bw", "weighted", "assisted", "plate", "bar", "trapbar", "hex", "lever",
-  "single", "unilateral", "alternating", "alt", "standing", "seated", "lying", "flat",
+  "single", "unilateral", "alternating", "alt", "standing", "seated", "lying",
   "with", "the", "a", "an", "on", "of", "and", "to", "in", "for", "using",
 ]);
 
