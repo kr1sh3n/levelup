@@ -410,7 +410,7 @@ function displayName(store) {
   return store.state.profileName || store.user?.email?.split("@")[0]?.toUpperCase() || "PLAYER 1";
 }
 
-function ProfileTab({ store }) {
+function ProfileTab({ store, setTab }) {
   const { state, importData, cloud, user, syncStatus, signOut } = store;
   const level = getLevel(state.totalXp);
   const xpInLevel = getXpInCurrentLevel(state.totalXp);
@@ -526,7 +526,7 @@ function ProfileTab({ store }) {
         </div>
       </div>
 
-      <MuscleCard store={store} />
+      <MuscleCard store={store} setTab={setTab} />
 
       <div className="card">
         <div className="card-title">Progress to Next Level</div>
@@ -693,7 +693,7 @@ function Dashboard({ user }) {
       {tab === "today" && <TodayTab store={store} setTab={setTab} />}
       {tab === "meals" && <MealsTab store={store} />}
       {tab === "gym" && <GymTab store={store} />}
-      {tab === "profile" && <ProfileTab store={store} />}
+      {tab === "profile" && <ProfileTab store={store} setTab={setTab} />}
 
       <nav className="tabbar">
         {TABS.map((t) => (

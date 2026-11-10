@@ -3,9 +3,8 @@ import { createViewer, webglSupported } from "./viewer3d";
 
 // props: colors { group: "#hex" }, selected group id | null, view { name, n } to
 // trigger a camera move, onSelect(group | null), baseColor / floorColor,
-// preview { primary: [groups], secondary: [groups] } | null (exercise flex) and
-// pulse [groups] (muscles that softly pulse to draw the eye).
-export default function MuscleViewer({ colors, selected, onSelect, view, baseColor, floorColor, preview, pulse }) {
+// pulse [groups] (muscles that softly pulse to draw the eye) and labels (bool).
+export default function MuscleViewer({ colors, selected, onSelect, view, baseColor, floorColor, pulse, labels }) {
   const box = useRef(null);
   const api = useRef(null);
   const onSelectRef = useRef(onSelect);
@@ -39,12 +38,12 @@ export default function MuscleViewer({ colors, selected, onSelect, view, baseCol
   }, [selected]);
 
   useEffect(() => {
-    api.current?.setPreview(preview || null);
-  }, [preview]);
-
-  useEffect(() => {
     api.current?.setPulse(pulse);
   }, [pulse]);
+
+  useEffect(() => {
+    api.current?.setLabels(labels !== false);
+  }, [labels]);
 
   useEffect(() => {
     if (view) api.current?.setView(view.name);

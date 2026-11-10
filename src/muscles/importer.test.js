@@ -101,13 +101,28 @@ describe("parseNumber", () => {
 describe("rowsToSets", () => {
   const mapping = { date: 0, exercise: 1, weight: 2, reps: 3, sets: -1, warmup: -1 };
 
+  it("reads a RIR column, and converts an RPE one", () => {
+    const head = ["Date", "Exercise", "Weight", "Reps", "RIR"];
+    const g = guessMapping(head);
+    expect(g.mapping.rir).toBe(4);
+    expect(g.rirScale).toBe("rir");
+    const { sets } = rowsToSets([["2026-11-09", "Squat", "100", "5", "2"]], g.mapping, { order: "ymd", rirScale: g.rirScale });
+    expect(sets[0].rir).toBe(2);
+
+    const rpe = guessMapping(["Date", "Exercise", "Weight", "Reps", "RPE"]);
+    expect(rpe.rirScale).toBe("rpe");
+    // RPE 8 means two reps left in the tank.
+    const out = rowsToSets([["2026-11-09", "Squat", "100", "5", "8"]], rpe.mapping, { order: "ymd", rirScale: rpe.rirScale });
+    expect(out.sets[0].rir).toBe(2);
+  });
+
   it("makes one set per row", () => {
     const { sets, skipped } = rowsToSets(
       [["2026-11-09", "Bench Press", "80", "8"], ["2026-11-09", "Bench Press", "80", "7"], [], ["", "", "", ""]],
       mapping
     );
     expect(sets).toHaveLength(2);
-    expect(sets[0]).toEqual({ date: "2026-11-09", name: "Bench Press", weight: 80, reps: 8, warmup: false });
+    expect(sets[0]).toEqual({ date: "2026-11-09", name: "Bench Press", weight: 80, reps: 8, warmup: false, rir: null });
     expect(skipped).toEqual([]);
   });
 

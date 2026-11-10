@@ -119,13 +119,13 @@ const baseState = () => ({
   workoutLogs: {
     "2026-11-09": {
       ex: {
-        b: { name: "Bench Press", sets: [{ weight: 80, reps: 8 }, { weight: 80, reps: 8 }, { weight: 40, reps: 10, warmup: true }] },
+        b: { name: "Bench Press", sets: [{ weight: 80, reps: 8, rir: 1 }, { weight: 80, reps: 8, rir: 4 }, { weight: 40, reps: 10, warmup: true }] },
         "e-old": { sets: [{ weight: 40, reps: 10 }] },
       },
     },
   },
   importedSets: {
-    "2026-11-10": [{ name: "DB Bench Press", weight: 30, reps: 10 }, { name: "Mystery Move", weight: 1, reps: 1 }],
+    "2026-11-10": [{ name: "DB Bench Press", weight: 30, reps: 10, rir: 0 }, { name: "Mystery Move", weight: 1, reps: 1 }],
     "2026-11-02": [{ name: "Bench Press", weight: 70, reps: 8 }],
   },
 });
@@ -137,6 +137,24 @@ describe("volume", () => {
   it("collects logged sets (recovering names from the plan) and imported sets", () => {
     expect(sets).toHaveLength(7);
     expect(sets.find((s) => s.name === "Leg Curl")).toBeTruthy();
+  });
+
+  it("carries RIR from both logged and imported sets", () => {
+    // Regression: the logged-set branch once dropped rir, so quality data from
+    // the Gym tab never reached the map while imported sets worked fine.
+    expect(sets.find((s) => s.name === "Bench Press" && s.rir === 1)).toBeTruthy();
+    expect(sets.find((s) => s.name === "DB Bench Press").rir).toBe(0);
+    expect(sets.find((s) => s.name === "Mystery Move").rir).toBe(null);
+  });
+
+  it("counts how many sets were taken near failure", () => {
+    const v = computeVolumes(sets, { ...week, indirect: 0.5 });
+    // Chest: bench at RIR 1 and 4, plus the dumbbell version at RIR 0.
+    expect(v.byGroup.chest.rated).toBe(3);
+    expect(v.byGroup.chest.hard).toBe(2); // RIR 4 is short of failure
+    expect(v.byGroup.chest.avgRir).toBeCloseTo(1.7, 1);
+    // Helpers inherit the rating only while indirect sets count at all.
+    expect(computeVolumes(sets, { ...week, indirect: 0 }).byGroup.triceps.rated).toBe(0);
   });
 
   it("counts direct sets fully and indirect sets at the chosen weight", () => {
@@ -201,12 +219,11 @@ describe("targets", () => {
     }
   });
 
-  it("returns a hex colour for every scheme and value", () => {
-    for (const scheme of ["zones", "heat", "cvd"]) {
-      for (const v of [0, 2, 6, 12, 25, 40]) expect(colorFor(v, "both", scheme)).toMatch(/^#[0-9a-f]{6}$/);
-    }
-    expect(colorFor(12, "both", "zones")).not.toBe(colorFor(2, "both", "zones"));
-    expect(legendItems("both", "zones")).toHaveLength(ZONE_KEYS.length);
+  it("returns a hex colour for every value, and distinguishes the zones", () => {
+    for (const v of [0, 2, 6, 12, 25, 40]) expect(colorFor(v, "both")).toMatch(/^#[0-9a-f]{6}$/);
+    const seen = new Set(ZONE_KEYS.map((z) => colorFor(GOALS.both.from[z] || 0, "both")));
+    expect(seen.size).toBe(ZONE_KEYS.length); // every zone reads differently
+    expect(legendItems("both")).toHaveLength(ZONE_KEYS.length);
   });
 });
 
@@ -261,7 +278,7 @@ describe("saved data upgrade", () => {
     expect(s.workoutLogs["2026-11-02"].ex.gone.name).toBeUndefined();
     expect(s.importedSets).toEqual({});
     expect(s.exerciseMuscles).toEqual({});
-    expect(s.muscleMap).toMatchObject({ goal: "both", scheme: "zones", period: "rolling" });
+    expect(s.muscleMap).toMatchObject({ goal: "both", period: "rolling" });
     // idempotent, and it never overwrites a name that is already there
     expect(migrate(s)).toEqual(s);
     expect(collectSets(s)).toHaveLength(1);
@@ -269,7 +286,11 @@ describe("saved data upgrade", () => {
 
   it("keeps a user's saved map settings", () => {
     const s = migrate({ schemaVersion: 2, totalXp: 0, skillXp: {}, muscleMap: { goal: "strength", period: "week", indirect: 0 } });
-    expect(s.muscleMap).toEqual({ goal: "strength", scheme: "zones", indirect: 0, period: "week" });
+    // Saved choices survive; settings added later arrive at their default, and
+    // settings we have dropped do not linger.
+    expect(s.muscleMap).toMatchObject({ goal: "strength", indirect: 0, period: "week" });
+    expect(s.muscleMap.mode).toBe("volume");
+    expect("scheme" in s.muscleMap).toBe(false);
   });
 });
 

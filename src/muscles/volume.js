@@ -40,7 +40,7 @@ export function periodRange(kind, today, offset = 0) {
 }
 
 // ── Collecting sets ─────────────────────────────────────────────────────────
-// -> [{ date, name, weight, reps, warmup }] from Pdash workout logs and imports.
+// -> [{ date, name, weight, reps, warmup, rir }] from Pdash workout logs and imports.
 export function collectSets(state) {
   const planNames = new Map();
   for (const day of state.workoutPlan?.days || []) {
@@ -52,12 +52,12 @@ export function collectSets(state) {
       const name = ex.name || planNames.get(exId);
       if (!name) continue;
       for (const s of ex.sets || []) {
-        out.push({ date, name, weight: s.weight, reps: s.reps, warmup: !!s.warmup });
+        out.push({ date, name, weight: s.weight, reps: s.reps, warmup: !!s.warmup, rir: s.rir ?? null });
       }
     }
   }
   for (const [date, rows] of Object.entries(state.importedSets || {})) {
-    for (const r of rows) out.push({ date, name: r.name, weight: r.weight, reps: r.reps, warmup: !!r.warmup });
+    for (const r of rows) out.push({ date, name: r.name, weight: r.weight, reps: r.reps, warmup: !!r.warmup, rir: r.rir ?? null });
   }
   return out;
 }
@@ -72,6 +72,11 @@ export function dataBounds(sets) {
   return min ? { min, max } : null;
 }
 
+// Sets taken within this many reps of failure are treated as "hard" sets. Most
+// of the hypertrophy evidence comes from sets in roughly this range; sets left
+// far short of failure still count as volume but contribute less.
+export const HARD_SET_RIR = 3;
+
 // ── Volume ──────────────────────────────────────────────────────────────────
 export function makeResolver(overrides = {}) {
   const cache = new Map();
@@ -85,7 +90,7 @@ export function makeResolver(overrides = {}) {
 export function computeVolumes(sets, { from, to, resolve, overrides = {}, indirect = 0.5 }) {
   const resolver = resolve || makeResolver(overrides);
   const byGroup = Object.fromEntries(
-    GROUP_IDS.map((g) => [g, { direct: 0, indirect: 0, effective: 0, days: new Set(), exercises: new Map() }])
+    GROUP_IDS.map((g) => [g, { direct: 0, indirect: 0, effective: 0, rated: 0, hard: 0, rirSum: 0, days: new Set(), exercises: new Map() }])
   );
   const unmatched = new Map();
   let counted = 0;
@@ -116,10 +121,20 @@ export function computeVolumes(sets, { from, to, resolve, overrides = {}, indire
         e.indirect++;
         if (indirect > 0) b.days.add(s.date);
       }
+      // Set quality: how close to failure this set was taken, where recorded.
+      // Counted only for sets that actually contribute to this group's volume.
+      if (s.rir != null && (role === "direct" || indirect > 0)) {
+        b.rated++;
+        b.rirSum += s.rir;
+        if (s.rir <= HARD_SET_RIR) b.hard++;
+      }
       b.exercises.set(r.name, e);
     }
   }
-  for (const b of Object.values(byGroup)) b.effective = b.direct + b.indirect * indirect;
+  for (const b of Object.values(byGroup)) {
+    b.effective = b.direct + b.indirect * indirect;
+    b.avgRir = b.rated > 0 ? Math.round((b.rirSum / b.rated) * 10) / 10 : null;
+  }
   return { byGroup, unmatched, counted, warmups, range: { from, to } };
 }
 

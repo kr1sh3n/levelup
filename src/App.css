@@ -962,8 +962,19 @@ body {
   box-shadow: 0 0 10px rgba(251,146,60,0.4);
 }
 
-.set-form { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
-.set-form .meal-input.small { flex: 1; }
+.set-form { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.set-form .meal-input.small { flex: 1 1 62px; min-width: 62px; }
+/* Reps in reserve: how many more reps were left. Blank = not recorded. */
+.rir-select {
+  flex: 0 0 auto; height: 36px; max-width: 72px; padding: 0 4px; border-radius: 2px; cursor: pointer;
+  background: rgba(var(--well-rgb), 0.3); border: 1px solid var(--border-strong);
+  color: var(--text); font-family: var(--font-body); font-size: 15px;
+}
+.rir-select option { background: var(--surface-solid); color: var(--text); }
+.rir-tag {
+  font-size: 13px; padding: 1px 5px; border-radius: 2px; white-space: nowrap;
+  color: var(--text-muted); border: 1px solid var(--border-strong); background: transparent;
+}
 .set-x { color: var(--text-muted); font-weight: 700; font-size: 16px; }
 
 .add-set-btn {
@@ -1758,7 +1769,6 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-period-label { flex: 1; text-align: center; font-size: 20px; }
 .mm-period .icon-btn { width: 34px; height: 34px; }
 .mm-period .icon-btn:disabled { opacity: 0.3; cursor: default; }
-.mm-schemes { margin-bottom: 0; }
 
 .mm-stage { position: relative; background: radial-gradient(ellipse 60% 55% at 50% 62%, color-mix(in srgb, var(--accent, #ff4d6d) 24%, transparent), transparent 70%); flex: 0 0 clamp(280px, 44vh, 500px); min-height: 0; }
 .mm-canvas { position: absolute; inset: 0; cursor: grab; }
@@ -1771,6 +1781,24 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
   font-family: var(--font-body); font-size: 16px; box-shadow: 2px 2px 0 rgba(var(--shadow-rgb), 0.4);
 }
 .mm-view-btn:hover { border-color: var(--purple); }
+.mm-view-btn.on { border-color: var(--purple); color: var(--purple); }
+
+/* Muscle name labels drawn over the canvas (positioned by viewer3d.js) */
+.mm-labels { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 2; }
+.mm-label {
+  position: absolute; top: 0; left: 0; white-space: nowrap; padding: 2px 6px; border-radius: 3px;
+  font-family: var(--font-body); font-size: 14px; line-height: 1.2; letter-spacing: 0.2px;
+  color: var(--text); background: rgba(var(--base-rgb), 0.72); border: 1px solid rgba(var(--hilite-rgb), 0.25);
+  text-shadow: 0 1px 2px rgba(var(--shadow-rgb), 0.8);
+  transition: opacity 0.18s ease;
+}
+.mm-label.on { color: var(--purple); border-color: var(--purple); background: rgba(var(--base-rgb), 0.9); }
+/* Narrow screens: the view buttons need the whole bottom row, so the counts
+   move to the top-right of the stage instead of colliding with them. */
+@media (max-width: 560px) {
+  .mm-stats { top: 6px; bottom: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .mm-label { transition: none; } }
 .mm-stats {
   position: absolute; right: 10px; bottom: 10px; font-size: 16px; color: var(--text-muted);
   background: rgba(var(--base-rgb), 0.75); padding: 4px 8px; border: 1px solid var(--border); border-radius: 3px;
@@ -1825,10 +1853,24 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-facts .down strong { color: var(--orange); }
 .mm-ex-row { display: flex; justify-content: space-between; gap: 8px; font-size: 17px; padding: 3px 0; }
 .mm-ex-row span:last-child { color: var(--text-muted); font-size: 15px; white-space: nowrap; }
-.mm-history { display: flex; align-items: flex-end; gap: 4px; height: 56px; margin: 4px 0 8px; }
-.mm-history-col { flex: 1; height: 100%; display: flex; align-items: flex-end; }
-.mm-history-bar { width: 100%; min-height: 3px; border-radius: 1px; opacity: 0.7; }
+.mm-history { position: relative; display: flex; align-items: flex-end; gap: 4px; height: 92px; margin: 4px 0 2px; }
+.mm-history-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px; }
+.mm-history-bar { width: 100%; min-height: 3px; border-radius: 1px; opacity: 0.75; }
 .mm-history-bar.last { opacity: 1; box-shadow: 0 0 0 1px rgba(var(--hilite-rgb), 0.5); }
+.mm-history-val { font-size: 13px; line-height: 1; color: var(--text-muted); }
+.mm-history-col:last-child .mm-history-val { color: var(--text); font-weight: 700; }
+.mm-history-tick { font-size: 12px; line-height: 1; color: var(--text-muted); opacity: 0.75; }
+.mm-history-band {
+  position: absolute; left: 0; right: 0; pointer-events: none;
+  background: rgba(var(--hilite-rgb), 0.09);
+  border-top: 1px dashed rgba(var(--hilite-rgb), 0.3); border-bottom: 1px dashed rgba(var(--hilite-rgb), 0.3);
+}
+.mm-history-key { margin-bottom: 8px; }
+.mm-addto { margin-top: 8px; padding: 9px 11px; border: 1px solid var(--border-strong); border-radius: 3px; background: rgba(var(--well-rgb), 0.25); }
+.mm-addto .suggest-row { margin-top: 6px; }
+.suggest-chip.on { border-color: var(--purple); color: var(--purple); }
+.mm-note.mm-added { margin-top: 8px; border-color: var(--purple); }
+@media (min-width: 560px) { .mm-history { height: 112px; } .mm-history-val { font-size: 14px; } }
 .suggest-chip.static { cursor: default; }
 .suggest-chip.static:hover { border-color: var(--border); box-shadow: none; color: inherit; }
 
@@ -1870,22 +1912,19 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-chip.indirect { border-color: var(--accent); color: var(--text); background: rgba(var(--accent-rgb), 0.25); }
 @media (max-width: 380px) { .mm-opts { grid-template-columns: 1fr; } .mm-map-row { grid-template-columns: 1fr 1.3fr; } }
 
-/* Muscle map animations: time-lapse button, exercise preview */
+/* Muscle map: time-lapse button */
 .mm-play { font-size: 12px; }
 .mm-play.on { border-color: var(--accent-hot); color: var(--accent-hot); }
-.mm-ex-btn { width: 100%; background: none; border: 0; color: inherit; font-family: inherit; text-align: left; cursor: pointer; }
-.mm-ex-btn:hover span:first-child { color: var(--accent-hot); }
-.mm-preview-row { display: flex; gap: 8px; align-items: center; }
-.mm-preview-row select { flex: 1; min-width: 0; }
-.mm-preview-legend { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; font-size: 16px; color: var(--text-muted); }
-.mm-preview-legend b { color: var(--text); font-weight: 600; }
-.mm-preview-chip {
-  position: absolute; right: 10px; top: 4px; display: flex; align-items: center; gap: 8px; max-width: 60%;
-  font-size: 16px; padding: 4px 4px 4px 9px; border: 1px solid var(--accent-hot); border-radius: 3px;
-  background: rgba(var(--base-rgb), 0.8); color: var(--text);
-}
-.mm-preview-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mm-preview-chip button { background: none; border: 0; color: var(--text-muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0 4px; }
 @media (prefers-reduced-motion: reduce) { .mm-play { transition: none; } }
-.mm-preview-row .claim-btn { width: auto; flex: 0 0 auto; padding: 10px 12px; margin: 0; }
-.mm-preview-row select { width: auto; }
+
+/* Muscle map: volume / recovery mode switch and the recovery readout */
+.mm-modes { margin-bottom: 8px; }
+.mm-period-static { text-align: center; padding: 6px 0 2px; color: var(--text-muted); font-size: 16px; }
+.mm-recovery-line {
+  display: flex; gap: 9px; align-items: flex-start; margin: 10px 0 2px; padding: 9px 11px;
+  border: 1px solid var(--border); border-radius: 3px; background: rgba(var(--well-rgb), 0.25);
+}
+.mm-recovery-line strong { font-size: 16px; }
+/* Second line inside a focus/recovery row: the other tab's number. */
+.mm-sub { display: block; font-style: normal; font-size: 14px; color: var(--text-muted); margin-top: 1px; }
+.mm-recovery-dot { width: 12px; height: 12px; flex-shrink: 0; margin-top: 4px; border: 1px solid rgba(var(--hilite-rgb), 0.35); }

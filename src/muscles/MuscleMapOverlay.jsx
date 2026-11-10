@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import MuscleViewer from "./MuscleViewer";
 import ImportDialog, { AssignDialog } from "./ImportDialog";
 import { GROUP_IDS, MUSCLE_GROUPS, groupLabel } from "./taxonomy";
-import { GOALS, GOAL_IDS, SCHEMES, SCHEME_IDS, ZONE_KEYS, ZONE_LABEL, colorFor, goalOf, legendItems, schemeOf, zoneFor } from "./targets";
-import { collectSets, computeVolumes, dataBounds, daysBetween, latestOffset, makeResolver, periodRange, rangeLabel, weekStart, weeklyHistory } from "./volume";
+import { GOALS, GOAL_IDS, ZONE_KEYS, ZONE_LABEL, colorFor, goalOf, legendItems, recoveryColorFor, recoveryLegendItems, zoneFor } from "./targets";
+import { HARD_SET_RIR, collectSets, computeVolumes, dataBounds, daysBetween, latestOffset, makeResolver, periodRange, rangeLabel, weekStart, weeklyHistory } from "./volume";
 import { makeDemoSets } from "./demo";
-import { LIBRARY, resolveExercise } from "./exercises";
+import { agoText, computeRecovery, readyList, recoveryText, restingList } from "./recovery";
 import { balanceChecks, describeGroup, focusList, overList, suggestExercises, targetBand } from "./insights";
 import { THEMES, themeOf } from "../themes";
 
@@ -20,13 +20,13 @@ function periodTitle(kind, offset, from, to) {
 }
 
 // A bar from 0 to the "very high" threshold, coloured by zone, with a marker at `value`.
-function BandBar({ value, goal, scheme }) {
+function BandBar({ value, goal }) {
   const from = GOALS[goalOf(goal)].from;
   const cap = from.extreme * 1.15;
   const stops = ZONE_KEYS.map((z, i) => {
     const start = (from[z] / cap) * 100;
     const end = i + 1 < ZONE_KEYS.length ? (from[ZONE_KEYS[i + 1]] / cap) * 100 : 100;
-    return `${colorFor(Math.max(from[z], 0.5), goal, scheme)} ${start}% ${end}%`;
+    return `${colorFor(Math.max(from[z], 0.5), goal)} ${start}% ${end}%`;
   });
   return (
     <div className="mm-band" style={{ background: `linear-gradient(90deg, ${stops.join(", ")})` }}>
@@ -35,7 +35,7 @@ function BandBar({ value, goal, scheme }) {
   );
 }
 
-function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, history, planNames, onClear, onPreview }) {
+function GroupDetail({ group, volumes, prevVolumes, goal, colorOf, history, planNames, onClear, recovery, planDays, onAddToPlan }) {
   const v = volumes.byGroup[group];
   const p = prevVolumes.byGroup[group];
   const info = describeGroup(group, volumes, goal);
@@ -44,6 +44,9 @@ function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, histo
   const color = colorOf(v.effective);
   const exercises = [...v.exercises.values()].sort((a, b) => b.direct * 2 + b.indirect - (a.direct * 2 + a.indirect));
   const suggestions = v.effective < min ? suggestExercises(group, planNames) : [];
+  // Which exercise the user is picking a day for, and the last one added.
+  const [picking, setPicking] = useState(null);
+  const [added, setAdded] = useState(null);
   const top = Math.max(max * 1.2, ...history.map((w) => w.totals[group]));
 
   return (
@@ -61,7 +64,7 @@ function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, histo
         <span className="mm-unit">weekly sets</span>
         <span className="mm-zone-chip" style={{ borderColor: color, color }}>{ZONE_LABEL[zoneFor(v.effective, goal)]}</span>
       </div>
-      <BandBar value={v.effective} goal={goal} scheme={scheme} />
+      <BandBar value={v.effective} goal={goal} />
       <div className="mm-band-legend">
         <span>0</span>
         <span>{min}</span>
@@ -71,6 +74,14 @@ function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, histo
 
       <p className="mm-advice">{info.summary}. {info.advice}</p>
 
+      <div className="mm-recovery-line">
+        <span className="mm-recovery-dot" style={{ background: recovery.color }} />
+        <div>
+          <strong>Last trained: {agoText(recovery.row.daysSince).toLowerCase()}</strong>
+          <div className="mm-fine">{recoveryText(recovery.row)}</div>
+        </div>
+      </div>
+
       <div className="mm-facts">
         <div><strong>{v.direct}</strong> direct</div>
         <div><strong>{v.indirect}</strong> indirect</div>
@@ -78,30 +89,54 @@ function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, histo
         <div className={delta > 0 ? "up" : delta < 0 ? "down" : ""}>
           <strong>{delta > 0 ? "+" : ""}{fmt(delta)}</strong> vs before
         </div>
+        {v.rated > 0 && <div><strong>{v.hard}</strong> near failure</div>}
       </div>
+
+      {v.rated > 0 && (
+        <p className="mm-fine">
+          {v.hard} of {v.rated} rated set{v.rated === 1 ? " was" : "s were"} taken within {HARD_SET_RIR} reps of failure
+          (average {fmt(v.avgRir)} in reserve). Sets left well short of failure still count, but push growth less.
+        </p>
+      )}
 
       {exercises.length > 0 && (
         <>
           <div className="field-label">What counted</div>
           {exercises.slice(0, 6).map((e) => (
-            <button key={e.name} type="button" className="mm-ex-row mm-ex-btn" onClick={() => onPreview(e.name)} aria-label={`Preview ${e.name}`}>
-              <span>▶ {e.name}</span>
+            <div key={e.name} className="mm-ex-row">
+              <span>{e.name}</span>
               <span>{e.direct ? `${e.direct} direct` : ""}{e.direct && e.indirect ? " + " : ""}{e.indirect ? `${e.indirect} helper` : ""}</span>
-            </button>
+            </div>
           ))}
         </>
       )}
 
       <div className="field-label">Last 8 weeks</div>
-      <div className="mm-history" aria-hidden="true">
-        {history.map((w, i) => (
-          <div key={w.from} className="mm-history-col" title={`${w.from}: ${fmt(round1(w.totals[group]))} sets`}>
-            <div
-              className={`mm-history-bar ${i === history.length - 1 ? "last" : ""}`}
-              style={{ height: `${Math.max(3, (w.totals[group] / top) * 100)}%`, background: colorOf(w.totals[group]) }}
-            />
-          </div>
-        ))}
+      {/* Every bar carries its number and the productive band is drawn behind them,
+          so the chart reads without a mouse to hover with. */}
+      <div className="mm-history">
+        <div
+          className="mm-history-band"
+          style={{ bottom: `${(min / top) * 100}%`, height: `${(Math.min(max, top) - min) / top * 100}%` }}
+          aria-hidden="true"
+        />
+        {history.map((w, i) => {
+          const value = round1(w.totals[group]);
+          const isLast = i === history.length - 1;
+          return (
+            <div key={w.from} className="mm-history-col">
+              <span className="mm-history-val">{fmt(value)}</span>
+              <div
+                className={`mm-history-bar ${isLast ? "last" : ""}`}
+                style={{ height: `${Math.max(3, (w.totals[group] / top) * 100)}%`, background: colorOf(w.totals[group]) }}
+              />
+              <span className="mm-history-tick">{isLast ? "now" : `−${history.length - 1 - i}`}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mm-fine mm-history-key">
+        Weekly sets, oldest first. The band marks the {min}–{max} range; numbers are sets.
       </div>
 
       {suggestions.length > 0 && (
@@ -109,18 +144,111 @@ function GroupDetail({ group, volumes, prevVolumes, goal, scheme, colorOf, histo
           <div className="field-label">Ways to add volume</div>
           <div className="suggest-row">
             {suggestions.map((s) => (
-              <span key={s.name} className="suggest-chip static">
-                {s.name}{s.inPlan ? " (in your plan)" : ""}
-              </span>
+              <button
+                key={s.name}
+                type="button"
+                className={`suggest-chip ${picking === s.name ? "on" : ""}`}
+                onClick={() => { setAdded(null); setPicking(picking === s.name ? null : s.name); }}
+                aria-expanded={picking === s.name}
+              >
+                {s.name}{s.inPlan ? " (in your plan)" : ""} +
+              </button>
             ))}
           </div>
+          {picking && (
+            <div className="mm-addto">
+              {planDays.length === 0 ? (
+                <div className="mm-fine">Build a workout plan in the Gym tab first, then you can add exercises straight from here.</div>
+              ) : (
+                <>
+                  <div className="mm-fine">Add <strong>{picking}</strong> to which day?</div>
+                  <div className="suggest-row">
+                    {planDays.map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        className="suggest-chip"
+                        onClick={() => { onAddToPlan(d.id, picking); setAdded({ name: picking, day: d.name }); setPicking(null); }}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+          {added && (
+            <div className="mm-note mm-added">
+              Added <strong>{added.name}</strong> to {added.day} — 3 sets of 8–12.{" "}
+              <button type="button" className="link-btn" onClick={() => onAddToPlan(null, null, true)}>Open Gym</button>
+            </div>
+          )}
         </>
       )}
     </div>
   );
 }
 
-function FocusPanel({ volumes, goal, colorOf, onPick }) {
+// "Rear Delts - 2/10 sets - ready now" is the sentence you act on; neither half
+// is much use alone, so each tab shows the other's number too.
+function readyWord(r) {
+  if (!r) return "";
+  if (r.status === "ready") return "ready now";
+  if (r.status === "untrained") return "not trained";
+  if (r.status === "soon") return "ready tomorrow";
+  return r.readyIn <= 1 ? "ready tomorrow" : `~${r.readyIn} days to go`;
+}
+
+function RecoveryPanel({ recovery, volumes, goal, colorOf, onPick }) {
+  const { min } = targetBand(goal);
+  const ready = readyList(recovery, 5);
+  const resting = restingList(recovery);
+
+  return (
+    <>
+      <div className="card">
+        <div className="card-title">Ready to train</div>
+        {ready.length === 0 && <div className="builder-empty">Everything is still inside its usual recovery window. A lighter session or a rest day both work.</div>}
+        {ready.map((r) => (
+          <button key={r.group} type="button" className="mm-focus-row" onClick={() => onPick(r.group)}>
+            <span className="mm-swatch" style={{ background: colorOf(r) }} />
+            <span className="mm-focus-name">
+              {groupLabel(r.group)}
+              <em className="mm-sub">{fmt(round1(volumes.byGroup[r.group].effective))} / {min} sets this week</em>
+            </span>
+            <span className="mm-focus-nums">{agoText(r.daysSince)}</span>
+          </button>
+        ))}
+      </div>
+
+      {resting.length > 0 && (
+        <div className="card">
+          <div className="card-title">Still recovering</div>
+          {resting.map((r) => (
+            <button key={r.group} type="button" className="mm-focus-row" onClick={() => onPick(r.group)}>
+              <span className="mm-swatch" style={{ background: colorOf(r) }} />
+              <span className="mm-focus-name">
+                {groupLabel(r.group)}
+                <em className="mm-sub">{fmt(round1(volumes.byGroup[r.group].effective))} / {min} sets this week</em>
+              </span>
+              <span className="mm-focus-nums">
+                {agoText(r.daysSince)}
+                <em>{r.readyIn === 0 ? "today" : `~${r.readyIn}d`}</em>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="mm-note">
+        A rule of thumb from training research, not a readiness test: bigger sessions get a longer window, and sleep, food and stress all move it. Train sore muscles if they feel fine.
+      </div>
+    </>
+  );
+}
+
+function FocusPanel({ volumes, goal, colorOf, onPick, recovery }) {
   const { min } = targetBand(goal);
   const focus = focusList(volumes, goal, 4);
   const over = overList(volumes, goal);
@@ -137,7 +265,10 @@ function FocusPanel({ volumes, goal, colorOf, onPick }) {
         {focus.map((f) => (
           <button key={f.group} type="button" className="mm-focus-row" onClick={() => onPick(f.group)}>
             <span className="mm-swatch" style={{ background: colorOf(f.effective) }} />
-            <span className="mm-focus-name">{f.label}</span>
+            <span className="mm-focus-name">
+              {f.label}
+              <em className="mm-sub">{readyWord(recovery.byGroup[f.group])}</em>
+            </span>
             <span className="mm-focus-nums">
               {fmt(round1(f.effective))} / {min} sets
               <em>+{Math.ceil(f.deficit)}</em>
@@ -182,13 +313,13 @@ function FocusPanel({ volumes, goal, colorOf, onPick }) {
   );
 }
 
-export default function MuscleMapOverlay({ store, onClose }) {
+export default function MuscleMapOverlay({ store, onClose, setTab }) {
   const { state, today } = store;
   const mm = state.muscleMap;
   const goal = goalOf(mm.goal);
-  const scheme = schemeOf(mm.scheme);
   const indirect = mm.indirect ?? GOALS[goal].indirect;
   const kind = mm.period === "week" ? "week" : "rolling";
+  const mode = mm.mode === "recovery" ? "recovery" : "volume";
   const theme = THEMES[themeOf(state.theme)];
 
   const { workoutLogs, importedSets, workoutPlan, exerciseMuscles } = state;
@@ -203,8 +334,8 @@ export default function MuscleMapOverlay({ store, onClose }) {
   const [view, setView] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
-  const [previewName, setPreviewName] = useState(null);
   const [playing, setPlaying] = useState(false);
+  const [labels, setLabels] = useState(true);
 
   const { from, to } = periodRange(kind, today, offset);
   const { from: prevFrom, to: prevTo } = periodRange(kind, today, offset + 1);
@@ -216,10 +347,19 @@ export default function MuscleMapOverlay({ store, onClose }) {
   );
   // Untrained muscles use a quiet per-theme colour instead of the scheme's own "none".
   const none = theme.mapNone;
-  const colorOf = useMemo(() => (value) => (value > 0 ? colorFor(value, goal, scheme) : none), [goal, scheme, none]);
+  const colorOf = useMemo(() => (value) => (value > 0 ? colorFor(value, goal) : none), [goal, none]);
+  // Recovery is always measured from today, so it ignores the period navigation.
+  const recovery = useMemo(() => computeRecovery(sets, { today, resolve: resolver, indirect }), [sets, today, resolver, indirect]);
+  const recoveryColorOf = useMemo(
+    () => (row) => (row.status === "untrained" ? none : recoveryColorFor(row)),
+    [none]
+  );
   const colors = useMemo(
-    () => Object.fromEntries(GROUP_IDS.map((g) => [g, colorOf(volumes.byGroup[g].effective)])),
-    [volumes, colorOf]
+    () =>
+      Object.fromEntries(
+        GROUP_IDS.map((g) => [g, mode === "recovery" ? recoveryColorOf(recovery.byGroup[g]) : colorOf(volumes.byGroup[g].effective)])
+      ),
+    [volumes, colorOf, mode, recovery, recoveryColorOf]
   );
   const history = useMemo(
     () => (selected ? weeklyHistory(sets, weekStart(to), 8, { resolve: resolver, indirect }) : []),
@@ -227,23 +367,27 @@ export default function MuscleMapOverlay({ store, onClose }) {
   );
   const sessions = useMemo(() => new Set(sets.filter((s) => !s.warmup && s.date >= from && s.date <= to).map((s) => s.date)).size, [sets, from, to]);
   const planNames = useMemo(() => workoutPlan.days.flatMap((d) => d.exercises.map((e) => e.name)), [workoutPlan]);
-  const legend = legendItems(goal, scheme);
+  const planDays = useMemo(() => workoutPlan.days.map((d) => ({ id: d.id, name: d.name })), [workoutPlan]);
 
-  // Exercise preview: the muscles an exercise works, split into main and helper.
-  const previewInfo = useMemo(() => {
-    if (!previewName) return null;
-    const r = resolveExercise(previewName, exerciseMuscles);
-    if (!r) return { name: previewName, primary: [], secondary: [] };
-    const groups = Object.entries(r.muscles);
-    return {
-      name: r.name,
-      primary: groups.filter(([, role]) => role === "direct").map(([g]) => g),
-      secondary: groups.filter(([, role]) => role !== "direct").map(([g]) => g),
-    };
-  }, [previewName, exerciseMuscles]);
-  // The weakest muscles pulse softly, except while an exercise preview is playing.
-  const pulseGroups = useMemo(() => (hasData ? focusList(volumes, goal, 3).map((f) => f.group) : []), [hasData, volumes, goal]);
-  const exerciseOptions = useMemo(() => [...new Set([...planNames, ...LIBRARY.map((e) => e.name)])].sort((a, b) => a.localeCompare(b)), [planNames]);
+  // Adding from the advice closes the loop: the suggestion lands in a real
+  // workout day instead of being something to remember later.
+  function addToPlan(dayId, name, goToGym) {
+    if (goToGym) {
+      onClose();
+      setTab?.("gym");
+      return;
+    }
+    store.addExercise(dayId, { name, sets: 3, reps: "8-12", targetWeight: "", restSec: 120, notes: "" });
+  }
+  const readyCount = useMemo(() => readyList(recovery, 99).filter((r) => r.status === "ready").length, [recovery]);
+  const restingCount = useMemo(() => restingList(recovery).length, [recovery]);
+  const legend = mode === "recovery" ? recoveryLegendItems() : legendItems(goal);
+
+  // The weakest muscles pulse softly to draw the eye.
+  const pulseGroups = useMemo(() => {
+    if (!hasData) return [];
+    return mode === "recovery" ? readyList(recovery, 3).map((r) => r.group) : focusList(volumes, goal, 3).map((f) => f.group);
+  }, [hasData, volumes, goal, mode, recovery]);
 
   // Week time-lapse: step from the oldest period with data up to the latest one.
   const bounds = useMemo(() => dataBounds(sets), [sets]);
@@ -276,7 +420,6 @@ export default function MuscleMapOverlay({ store, onClose }) {
       return;
     }
     setSelected(null);
-    setPreviewName(null);
     // Start from the oldest period unless the user is already partway through.
     if (offset <= latest) setOffset(oldestOffset);
     setPlaying(true);
@@ -293,7 +436,6 @@ export default function MuscleMapOverlay({ store, onClose }) {
   function toggleDemo() {
     const next = !demo;
     setPlaying(false);
-    setPreviewName(null);
     setDemo(next);
     setSelected(null);
     // In Mon-Sun mode the demo opens on last week so it is a complete week of training.
@@ -318,6 +460,21 @@ export default function MuscleMapOverlay({ store, onClose }) {
       </div>
 
       <div className="mm-controls">
+        <div className="slot-tabs mm-modes">
+          {[["volume", "Weekly sets"], ["recovery", "Recovery"]].map(([m, label]) => (
+            <button
+              key={m}
+              type="button"
+              className={`slot-tab ${mode === m ? "active" : ""}`}
+              onClick={() => { setPlaying(false); store.setMuscleMapSettings({ mode: m }); }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {mode === "recovery" ? (
+          <div className="mm-period-label mm-period-static">Days since each muscle was trained</div>
+        ) : (
         <div className="mm-period">
           <button type="button" className="icon-btn" onClick={() => { setPlaying(false); setOffset(offset + 1); }} aria-label="Previous period">‹</button>
           <div className="mm-period-label">{viewing}</div>
@@ -326,13 +483,7 @@ export default function MuscleMapOverlay({ store, onClose }) {
             {playing ? "■" : "▶"}
           </button>
         </div>
-        <div className="slot-tabs mm-schemes">
-          {SCHEME_IDS.map((s) => (
-            <button key={s} type="button" className={`slot-tab ${scheme === s ? "active" : ""}`} onClick={() => store.setMuscleMapSettings({ scheme: s })}>
-              {SCHEMES[s].label}
-            </button>
-          ))}
-        </div>
+        )}
       </div>
 
       <div className="mm-stage">
@@ -343,24 +494,31 @@ export default function MuscleMapOverlay({ store, onClose }) {
           view={view}
           baseColor={theme.mapBase}
           floorColor={theme.mapFloor}
-          preview={previewInfo}
           pulse={pulseGroups}
+          labels={labels}
         />
         <div className="mm-views">
           {[["front", "Front"], ["back", "Back"], ["left", "L"], ["right", "R"]].map(([k, l]) => (
             <button key={k} type="button" className="mm-view-btn" onClick={() => askView(k)}>{l}</button>
           ))}
+          <button
+            type="button"
+            className={`mm-view-btn ${labels ? "on" : ""}`}
+            onClick={() => setLabels(!labels)}
+            aria-pressed={labels}
+            aria-label={labels ? "Hide muscle names" : "Show muscle names"}
+          >
+            Aa
+          </button>
         </div>
         <div className="mm-stats">
-          <strong>{volumes.counted}</strong> sets · <strong>{sessions}</strong> day{sessions === 1 ? "" : "s"}
+          {mode === "recovery" ? (
+            <><strong>{readyCount}</strong> ready · <strong>{restingCount}</strong> resting</>
+          ) : (
+            <><strong>{volumes.counted}</strong> sets · <strong>{sessions}</strong> day{sessions === 1 ? "" : "s"}</>
+          )}
         </div>
         {demo && <div className="mm-badge">DEMO DATA</div>}
-        {previewInfo && (
-          <div className="mm-preview-chip">
-            <span>{previewInfo.name}</span>
-            <button type="button" onClick={() => setPreviewName(null)} aria-label="Stop exercise preview">×</button>
-          </div>
-        )}
       </div>
 
       <div className="mm-legend" role="list" aria-label="Colour legend">
@@ -394,46 +552,23 @@ export default function MuscleMapOverlay({ store, onClose }) {
           </div>
         )}
 
-        <div className="card mm-preview-card">
-          <div className="card-title">Exercise preview</div>
-          <div className="mm-preview-row">
-            <select className="meal-input" value={previewName || ""} onChange={(e) => { setPlaying(false); setPreviewName(e.target.value || null); }} aria-label="Pick an exercise to preview">
-              <option value="">Pick an exercise…</option>
-              {exerciseOptions.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            {previewName && <button type="button" className="claim-btn ghost" onClick={() => setPreviewName(null)}>STOP</button>}
-          </div>
-          {previewInfo ? (
-            <div className="mm-preview-legend">
-              {previewInfo.primary.length === 0 && previewInfo.secondary.length === 0 ? (
-                <span>This exercise isn&apos;t mapped to a muscle yet.</span>
-              ) : (
-                <>
-                  {previewInfo.primary.length > 0 && <span><b>Main:</b> {previewInfo.primary.map(groupLabel).join(", ")}</span>}
-                  {previewInfo.secondary.length > 0 && <span><b>Helpers:</b> {previewInfo.secondary.map(groupLabel).join(", ")}</span>}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="mm-fine">See which muscles an exercise works. Main muscles swell and glow, helpers glow softly.</div>
-          )}
-        </div>
-
         {hasData && selected && (
           <GroupDetail
             group={selected}
             volumes={volumes}
             prevVolumes={prevVolumes}
             goal={goal}
-            scheme={scheme}
             colorOf={colorOf}
             history={history}
             planNames={planNames}
             onClear={() => setSelected(null)}
-            onPreview={(n) => { setPlaying(false); setPreviewName(n); }}
+            recovery={{ row: recovery.byGroup[selected], color: recoveryColorOf(recovery.byGroup[selected]) }}
+            planDays={planDays}
+            onAddToPlan={addToPlan}
           />
         )}
-        {hasData && !selected && <FocusPanel volumes={volumes} goal={goal} colorOf={colorOf} onPick={setSelected} />}
+        {hasData && !selected && mode === "recovery" && <RecoveryPanel recovery={recovery} volumes={volumes} goal={goal} colorOf={recoveryColorOf} onPick={setSelected} />}
+        {hasData && !selected && mode !== "recovery" && <FocusPanel volumes={volumes} goal={goal} colorOf={colorOf} onPick={setSelected} recovery={recovery} />}
 
         <div className="card">
           <button type="button" className="mm-settings-toggle" onClick={() => setShowSettings(!showSettings)} aria-expanded={showSettings}>

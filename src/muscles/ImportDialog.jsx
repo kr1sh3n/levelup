@@ -152,6 +152,7 @@ export default function ImportDialog({ store, onClose, onImported }) {
   const [choice, setChoice] = useState("0");
   const [mapping, setMapping] = useState(null);
   const [unit, setUnit] = useState("kg");
+  const [rirScale, setRirScale] = useState("rir");
   const [order, setOrder] = useState({ order: "dmy", ambiguous: false });
   const [draft, setDraft] = useState({});
   const [error, setError] = useState(null);
@@ -167,6 +168,7 @@ export default function ImportDialog({ store, onClose, onImported }) {
     const g = guessMapping(t.headers);
     setMapping(g.mapping);
     setUnit(g.unit);
+    setRirScale(g.rirScale);
     setOrder(inferDateOrder(g.mapping.date >= 0 ? t.body.map((r) => r[g.mapping.date]) : []));
   }
 
@@ -208,8 +210,8 @@ export default function ImportDialog({ store, onClose, onImported }) {
 
   const ready = !!mapping && mapping.date >= 0 && mapping.exercise >= 0;
   const result = useMemo(
-    () => (ready ? rowsToSets(table.body, mapping, { order: order.order, unit }) : { sets: [], skipped: [] }),
-    [ready, table, mapping, order.order, unit]
+    () => (ready ? rowsToSets(table.body, mapping, { order: order.order, unit, rirScale }) : { sets: [], skipped: [] }),
+    [ready, table, mapping, order.order, unit, rirScale]
   );
   const overrides = store.state.exerciseMuscles;
   // Rows to assign come from the data alone, so a row stays visible (showing what was

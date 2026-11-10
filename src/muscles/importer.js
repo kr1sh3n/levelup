@@ -123,7 +123,7 @@ export function combineSheets(sheets) {
 }
 
 // ── Column mapping ──────────────────────────────────────────────────────────
-export const FIELDS = ["date", "exercise", "weight", "reps", "sets", "warmup"];
+export const FIELDS = ["date", "exercise", "weight", "reps", "sets", "rir", "warmup"];
 
 const RULES = {
   date: [/\b(date|datetime|timestamp)\b/, /^(start time|day)$/],
@@ -131,6 +131,7 @@ const RULES = {
   weight: [/\b(weight|load|kg|lbs?|pounds?)\b/],
   reps: [/\b(reps?|repetitions)\b/],
   sets: [/^(sets|no of sets|number of sets|sets completed|total sets|set count|working sets)$/],
+  rir: [/\brir\b/, /reps? in reserve/, /^rpe$/],
   warmup: [/warm/, /^(set type|type)$/],
 };
 
@@ -150,7 +151,14 @@ export function guessMapping(headers) {
     }
   }
   const wh = mapping.weight >= 0 ? norm[mapping.weight] : "";
-  return { mapping, unit: /\b(lb|lbs|pound|pounds)\b/.test(wh) ? "lb" : "kg" };
+  // An RPE column is the same idea upside down (RPE 10 = nothing left = RIR 0),
+  // so remember which scale the sheet uses and convert on the way in.
+  const rh = mapping.rir >= 0 ? norm[mapping.rir] : "";
+  return {
+    mapping,
+    unit: /\b(lb|lbs|pound|pounds)\b/.test(wh) ? "lb" : "kg",
+    rirScale: /\brpe\b/.test(rh) ? "rpe" : "rir",
+  };
 }
 
 // ── Cell parsing ────────────────────────────────────────────────────────────
@@ -217,7 +225,14 @@ const isWarmupCell = (v) => /^(1|true|yes|y|w|warm.?up|warm up)$/i.test(String(v
 
 // ── Rows -> sets ────────────────────────────────────────────────────────────
 // -> { sets: [{ date, name, weight, reps, warmup }], skipped: [{ line, reason }] }
-export function rowsToSets(body, mapping, { order = "dmy", unit = "kg" } = {}) {
+// A sheet may record either reps in reserve or RPE; both end up as RIR.
+function toRir(value, scale) {
+  if (value == null || Number.isNaN(value)) return null;
+  const n = scale === "rpe" ? 10 - value : value;
+  return Math.max(0, Math.min(10, Math.round(n)));
+}
+
+export function rowsToSets(body, mapping, { order = "dmy", unit = "kg", rirScale = "rir" } = {}) {
   const sets = [];
   const skipped = [];
   body.forEach((row, i) => {
@@ -251,8 +266,9 @@ export function rowsToSets(body, mapping, { order = "dmy", unit = "kg" } = {}) {
       return;
     }
     const warmup = mapping.warmup >= 0 && isWarmupCell(row[mapping.warmup]);
+    const rir = mapping.rir >= 0 ? toRir(parseNumber(row[mapping.rir]), rirScale) : null;
     for (let k = 0; k < count; k++) {
-      sets.push({ date, name, weight: weight ?? 0, reps: reps ?? 0, warmup });
+      sets.push({ date, name, weight: weight ?? 0, reps: reps ?? 0, warmup, rir });
     }
   });
   return { sets, skipped };
@@ -263,6 +279,7 @@ export function groupByDate(sets) {
   for (const s of sets) {
     const row = { name: s.name, weight: s.weight, reps: s.reps };
     if (s.warmup) row.warmup = true;
+    if (s.rir != null) row.rir = s.rir;
     (out[s.date] ||= []).push(row);
   }
   return out;

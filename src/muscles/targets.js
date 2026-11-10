@@ -10,6 +10,8 @@
 // These are population averages from mostly young, healthy lifters, not a
 // prescription for any one person.
 
+import { RECOVERY_KEYS, RECOVERY_LABEL } from "./recovery";
+
 export const ZONE_KEYS = ["none", "low", "moderate", "optimal", "high", "extreme"];
 
 // `from` = effective weekly sets at which the zone begins.
@@ -74,78 +76,55 @@ export const ZONE_LABEL = {
   extreme: "Very high",
 };
 
-// ── Colour schemes ──────────────────────────────────────────────────────────
-export const SCHEMES = {
-  zones: { label: "Zones" },
-  heat: { label: "Heat" },
-  cvd: { label: "Colour-blind" },
-};
-export const SCHEME_IDS = Object.keys(SCHEMES);
-export const schemeOf = (id) => (SCHEMES[id] ? id : "zones");
-
+// ── Colours ─────────────────────────────────────────────────────────────────
+// One palette, used by both the weekly-sets and recovery views. It runs
+// blue -> cyan -> teal -> amber -> vermilion, so the "productive" end and the
+// "too much" end differ in hue *and* brightness. That keeps it readable with
+// the common forms of colour blindness without needing a separate mode, and
+// the muscle labels mean colour is never the only signal.
 const ZONE_COLORS = {
-  zones: {
-    none: "#4b4b5c",
-    low: "#4f7cff",
-    moderate: "#2ec4b6",
-    optimal: "#3ddc6e",
-    high: "#ffb020",
-    extreme: "#ff4d4d",
-  },
-  // Okabe-Ito palette, designed to stay distinguishable with colour-vision deficiency.
-  cvd: {
-    none: "#555566",
-    low: "#0072b2",
-    moderate: "#56b4e9",
-    optimal: "#009e73",
-    high: "#e69f00",
-    extreme: "#d55e00",
-  },
+  none: "#3a3a47",
+  low: "#3b6ea5",
+  moderate: "#4fb0c6",
+  optimal: "#46c09a",
+  high: "#e8a33d",
+  extreme: "#e8653d",
 };
 
-const HEAT_STOPS = [
-  [0, [38, 32, 66]],
-  [0.25, [96, 44, 140]],
-  [0.5, [200, 54, 140]],
-  [0.75, [255, 138, 61]],
-  [1, [255, 230, 109]],
-];
-
-const toHex = (rgb) => "#" + rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("");
-
-function heatColor(value, goal) {
-  const cap = GOALS[goalOf(goal)].from.high;
-  const t = Math.max(0, Math.min(1, value / cap));
-  for (let i = 1; i < HEAT_STOPS.length; i++) {
-    const [t1, c1] = HEAT_STOPS[i];
-    const [t0, c0] = HEAT_STOPS[i - 1];
-    if (t <= t1) {
-      const k = (t - t0) / (t1 - t0);
-      return toHex(c0.map((c, j) => c + (c1[j] - c) * k));
-    }
-  }
-  return toHex(HEAT_STOPS[HEAT_STOPS.length - 1][1]);
+export function colorFor(value, goal) {
+  return ZONE_COLORS[zoneFor(value, goal)];
 }
 
-export function colorFor(value, goal, scheme) {
-  const s = schemeOf(scheme);
-  if (s === "heat") return value <= 0 ? "#2a2a3a" : heatColor(value, goal);
-  return ZONE_COLORS[s][zoneFor(value, goal)];
+export function zoneColor(zone) {
+  return ZONE_COLORS[zone];
 }
 
-export function zoneColor(zone, scheme) {
-  const s = schemeOf(scheme);
-  return s === "heat" ? null : ZONE_COLORS[s][zone];
-}
-
-// [{ key, label, range, color }] for the legend. The heat scheme gets a gradient instead.
-export function legendItems(goal, scheme) {
+// [{ key, label, range, color }] for the legend.
+export function legendItems(goal) {
   const from = GOALS[goalOf(goal)].from;
-  const s = schemeOf(scheme);
   return ZONE_KEYS.map((key, i) => {
     const next = ZONE_KEYS[i + 1];
-    const range =
-      key === "none" ? "0" : next ? `${from[key]}-${from[next]}` : `${from[key]}+`;
-    return { key, label: ZONE_LABEL[key], range, color: s === "heat" ? colorFor(from[key] || 0, goal, "heat") : ZONE_COLORS[s][key] };
+    const range = key === "none" ? "0" : next ? `${from[key]}-${from[next]}` : `${from[key]}+`;
+    return { key, label: ZONE_LABEL[key], range, color: ZONE_COLORS[key] };
   });
+}
+
+// ── Recovery colours ────────────────────────────────────────────────────────
+// The same ramp read the other way round: warm means "just worked, still
+// recovering", cool-green means "ready to go". See recovery.js for the statuses.
+const RECOVERY_COLORS = {
+  worked: "#e8653d",
+  recovering: "#e8a33d",
+  soon: "#4fb0c6",
+  ready: "#46c09a",
+  untrained: "#3a3a47",
+};
+
+// `r` is a row from computeRecovery().byGroup.
+export function recoveryColorFor(r) {
+  return RECOVERY_COLORS[r.status];
+}
+
+export function recoveryLegendItems() {
+  return RECOVERY_KEYS.map((key) => ({ key, label: RECOVERY_LABEL[key], range: "", color: RECOVERY_COLORS[key] }));
 }

@@ -132,6 +132,7 @@ function SetRow({ set, index, onDelete, locked }) {
     <div className="set-row">
       <span className="set-num">Set {index + 1}</span>
       <span className="set-vol">{set.weight} kg × {set.reps}</span>
+      {set.rir != null && <span className="rir-tag">RIR {set.rir}</span>}
       {set.pr && <span className="pr-tag">PR</span>}
       {set.warmup && <span className="pr-tag warm-tag">WARM-UP</span>}
       {!locked && (
@@ -146,6 +147,7 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [warmup, setWarmup] = useState(false);
+  const [rir, setRir] = useState("");
   const locked = !!log?.completedAt;
   const exLog = log?.ex[ex.id] || { sets: [], done: false };
   const last = lastSessionFor(ex.id);
@@ -153,9 +155,10 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   function submit(e) {
     e.preventDefault();
     if (!reps || Number(reps) <= 0) return;
-    addSet(day.id, ex, weight, reps, { warmup });
+    addSet(day.id, ex, weight, reps, { warmup, rir });
     setReps("");
     setWarmup(false);
+    setRir("");
     onSetAdded(warmup ? 0 : ex.restSec);
   }
 
@@ -210,6 +213,23 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
             onChange={(e) => setReps(e.target.value)}
             aria-label={`${ex.name} reps`}
           />
+          {!warmup && (
+            <select
+              className="rir-select"
+              value={rir}
+              onChange={(e) => setRir(e.target.value)}
+              aria-label={`${ex.name} reps in reserve`}
+              title="Reps in reserve: how many more reps you could have done"
+            >
+              <option value="">RIR</option>
+              <option value="0">0 — failure</option>
+              <option value="1">1 left</option>
+              <option value="2">2 left</option>
+              <option value="3">3 left</option>
+              <option value="4">4 left</option>
+              <option value="5">5+ left</option>
+            </select>
+          )}
           <button
             type="button"
             className={`warmup-toggle ${warmup ? "on" : ""}`}

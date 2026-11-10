@@ -1,14 +1,14 @@
 // The three.js scene for the muscle map: the anatomy model with toon shading and
 // outline, orbit controls, tap-to-select, smooth colour transitions, spring-damped
 // camera moves and the animations (intro sweep, breathing, pulse on weak muscles,
-// tap-to-focus, exercise flex preview). Framework-free; MuscleViewer.jsx owns the
-// lifecycle.
+// tap-to-focus) plus the muscle name labels. Framework-free; MuscleViewer.jsx
+// owns the lifecycle.
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/addons/loaders/DRACOLoader.js";
-import { GROUP_IDS } from "./taxonomy";
+import { GROUP_IDS, groupLabel } from "./taxonomy";
 
 const BASE_KEY = "base";
 
@@ -27,8 +27,10 @@ const TARGET = new THREE.Vector3(0, 0.78, 0);
 // Camera azimuth for each preset view (the figure faces +z; its right side is -x).
 const VIEW_AZIMUTH = { front: 0, right: -Math.PI / 2, back: Math.PI, left: Math.PI / 2 };
 const VIEW_POLAR = 1.5; // just above level
+// How much of the view a focused muscle fills. Deliberately well under 1: a
+// close-up with no silhouette around it leaves you unable to tell where you are.
+const FOCUS_FILL = 0.45;
 const FLEX_DEPTH = 0.011; // metres a muscle swells at flex = 1
-const REP_SECONDS = 2.6; // one rep of the exercise preview
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
 const smooth01 = (x) => {
   const t = clamp01(x);
@@ -157,7 +159,16 @@ export function createViewer(container, { onSelect } = {}) {
       materials[key2] = material;
       if (uniform) {
         const box = new THREE.Box3().setFromObject(o);
-        bounds[key2] = { cy: (box.min.y + box.max.y) / 2, cz: (box.min.z + box.max.z) / 2, h: box.max.y - box.min.y, w: box.max.x - box.min.x };
+        bounds[key2] = {
+          // Label anchor: the centroid of ONE side of the muscle. A left+right
+          // pair shares a mesh, so its bounding-box centre falls on the midline
+          // and would caption the belly "Forearms". One side lands on the muscle.
+          centre: sideAnchor(o.geometry, box),
+          cy: (box.min.y + box.max.y) / 2,
+          cz: (box.min.z + box.max.z) / 2,
+          h: box.max.y - box.min.y,
+          w: box.max.x - box.min.x,
+        };
       }
       if (current[key2]) material.color.copy(current[key2]);
       const outlineMaterial = new THREE.ShaderMaterial({
@@ -200,7 +211,6 @@ export function createViewer(container, { onSelect } = {}) {
   let lastColors = {};
   let selected = null;
   let pulse = new Set();
-  let preview = null; // { primary: Set, secondary: Set, t0 }
   let needsRender = true;
   let fitDist = 4;
 
@@ -209,7 +219,6 @@ export function createViewer(container, { onSelect } = {}) {
     for (const g of GROUP_IDS) {
       goal[g].set(lastColors[g] || "#4b4b5c");
       if (selected && selected !== g) goal[g].lerp(baseColor, 0.6);
-      else if (preview && !preview.primary.has(g) && !preview.secondary.has(g)) goal[g].lerp(baseColor, 0.7);
     }
     needsRender = true;
   }
@@ -221,22 +230,12 @@ export function createViewer(container, { onSelect } = {}) {
     if (selected === g) {
       flex = 0.5;
       glow = 0.2;
-    } else if (!selected && pulse.has(g) && !preview) {
+    } else if (!selected && pulse.has(g)) {
       glow = reduced ? 0.2 : 0.1 + 0.22 * (0.5 + 0.5 * Math.sin((t * Math.PI * 2) / 1.8));
     }
-    if (!reduced && !selected && !preview) {
+    if (!reduced && !selected) {
       if (g === "chest") flex = 0.14 * (0.5 + 0.5 * Math.sin(t * 1.5));
       else if (g === "abs" || g === "obliques") flex = 0.1 * (0.5 + 0.5 * Math.sin(t * 1.5 - 0.6));
-    }
-    if (preview) {
-      const role = preview.primary.has(g) ? 1 : preview.secondary.has(g) ? 0.45 : 0;
-      if (role) {
-        const p = (((t - preview.t0) / REP_SECONDS) % 1 + 1) % 1;
-        // quick squeeze, slow release
-        const wave = reduced ? 0.7 : p < 0.35 ? smooth01(p / 0.35) : 1 - smooth01((p - 0.35) / 0.65);
-        flex = role * wave;
-        glow = role === 1 ? 0.08 + 0.5 * wave : 0.04 + 0.22 * wave;
-      }
     }
     return { flex, glow };
   }
@@ -278,10 +277,6 @@ export function createViewer(container, { onSelect } = {}) {
     return Math.atan2(off.x, off.z);
   }
 
-  function currentRadius() {
-    return camera.position.distanceTo(controls.target);
-  }
-
   const tanHalf = Math.tan((FOV * Math.PI) / 360);
 
   function focusGroup(g) {
@@ -292,9 +287,101 @@ export function createViewer(container, { onSelect } = {}) {
     }
     // Face the side the muscle is on: back muscles from behind, front ones from the front.
     const az = b.cz < -0.02 ? Math.PI : b.cz > 0.02 ? 0 : currentAzimuth();
-    const rh = (b.h * 0.5 * 1.4 + 0.07) / tanHalf;
-    const rw = (b.w * 0.5 * 1.2 + 0.05) / (tanHalf * camera.aspect);
-    startView(az, VIEW_POLAR, Math.min(fitDist, Math.max(rh, rw)), b.cy);
+    // Distance that makes the muscle fill FOCUS_FILL of the view, then held back
+    // so at least half the figure stays in frame however small the muscle is.
+    // Dividing the width by the aspect keeps the framing honest on a wide monitor
+    // and a narrow phone alike.
+    const need = Math.max(b.h, b.w / camera.aspect) / (2 * FOCUS_FILL * tanHalf);
+    const r = Math.min(fitDist, Math.max(fitDist * 0.55, need));
+    // Sit between the muscle and the body centre, so the silhouette stays readable.
+    startView(az, VIEW_POLAR, r, TARGET.y + (b.cy - TARGET.y) * 0.75);
+  }
+
+  // ── Labels ──────────────────────────────────────────────────────────────
+  // Plain DOM over the canvas: crisp at any resolution, themeable, and free to
+  // restyle. Only muscles facing the camera are labelled, and overlapping ones
+  // are dropped, so you get a handful of readable names instead of 18 stacked.
+  const labelLayer = document.createElement("div");
+  labelLayer.className = "mm-labels";
+  container.appendChild(labelLayer);
+  const labelEls = {};
+  for (const g of GROUP_IDS) {
+    const el = document.createElement("div");
+    el.className = "mm-label";
+    el.textContent = groupLabel(g);
+    el.style.opacity = "0";
+    labelLayer.appendChild(el);
+    labelEls[g] = el;
+  }
+  let labelsOn = true;
+  const vProj = new THREE.Vector3();
+  const vOut = new THREE.Vector3();
+  const camDir = new THREE.Vector3();
+
+  function sideAnchor(geometry, box) {
+    const pos = geometry.attributes.position;
+    let ax = 0;
+    let ay = 0;
+    let az = 0;
+    let n = 0;
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      if (x < 0.02) continue; // skip the midline and the far side
+      ax += x;
+      ay += pos.getY(i);
+      az += pos.getZ(i);
+      n++;
+    }
+    return n > 20 ? new THREE.Vector3(ax / n, ay / n, az / n) : box.getCenter(new THREE.Vector3());
+  }
+
+  function hideLabels() {
+    for (const g of GROUP_IDS) labelEls[g].style.opacity = "0";
+  }
+
+  function updateLabels() {
+    const w = container.clientWidth;
+    const h = container.clientHeight;
+    if (!labelsOn || all.length === 0 || sweepStart !== null) {
+      hideLabels();
+      return;
+    }
+    camera.getWorldDirection(camDir);
+    const cands = [];
+    for (const g of GROUP_IDS) {
+      const b = bounds[g];
+      if (!b) continue;
+      // Treat the muscle's offset from the body axis as its outward direction;
+      // if it points away from the camera the muscle is round the back.
+      vOut.set(b.centre.x, 0, b.centre.z);
+      if (vOut.lengthSq() < 1e-6) vOut.set(0, 0, 1);
+      vOut.normalize();
+      if (vOut.dot(camDir) > -0.12) continue;
+      vProj.copy(b.centre).project(camera);
+      if (vProj.z > 1) continue;
+      const x = (vProj.x * 0.5 + 0.5) * w;
+      const y = (-vProj.y * 0.5 + 0.5) * h;
+      if (x < 6 || x > w - 6 || y < 6 || y > h - 6) continue;
+      cands.push({ g, x, y, rank: selected === g ? 3 : pulse.has(g) ? 2 : 1, size: b.h * b.w });
+    }
+    // Most important first, so a crowded area keeps the label worth reading.
+    cands.sort((a, b2) => b2.rank - a.rank || b2.size - a.size);
+    const max = w < 520 ? 6 : 14;
+    const placed = [];
+    const shown = new Set();
+    for (const c of cands) {
+      if (shown.size >= max) break;
+      const el = labelEls[c.g];
+      const halfW = (el.offsetWidth || 54) / 2;
+      const halfH = (el.offsetHeight || 16) / 2;
+      if (placed.some((p) => Math.abs(p.x - c.x) < p.halfW + halfW + 4 && Math.abs(p.y - c.y) < p.halfH + halfH + 2)) continue;
+      placed.push({ x: c.x, y: c.y, halfW, halfH });
+      shown.add(c.g);
+      el.style.transform = `translate(-50%,-50%) translate(${Math.round(c.x)}px, ${Math.round(c.y)}px)`;
+      el.style.opacity = selected && selected !== c.g ? "0.4" : "1";
+      el.classList.toggle("on", selected === c.g);
+    }
+    for (const g of GROUP_IDS) if (!shown.has(g)) labelEls[g].style.opacity = "0";
   }
 
   // ── Loop ────────────────────────────────────────────────────────────────
@@ -356,7 +443,7 @@ export function createViewer(container, { onSelect } = {}) {
       if (Math.abs(u.value - dyn.flex) > 0.0005) {
         u.value += (dyn.flex - u.value) * kf;
         changed = true;
-        if (selected || preview) busy = true;
+        if (selected) busy = true;
       }
       if (settling || sweeping) {
         shown.copy(neutral).lerp(current[g], reveal[g]);
@@ -367,8 +454,8 @@ export function createViewer(container, { onSelect } = {}) {
         m.userData.glow = e;
         m.emissive.copy(current[g]).multiplyScalar(e);
         changed = true;
-        if (preview || pulse.size) busy = true;
-      } else if (e > 0 && (pulse.size || preview)) {
+        if (pulse.size) busy = true;
+      } else if (e > 0 && pulse.size) {
         m.emissive.copy(current[g]).multiplyScalar(e);
       }
     }
@@ -381,15 +468,13 @@ export function createViewer(container, { onSelect } = {}) {
         changed = true;
       }
     }
-    const animated = !reduced && (changed || pulse.size > 0 || preview);
+    const animated = !reduced && (changed || pulse.size > 0);
     // Idle animation only needs ~30 fps; anything the user is driving gets every frame.
-    if (needsRender || busy || (animated && now - lastRender > 33)) {
+    if (needsRender || busy || ((animated || changed) && now - lastRender > 33)) {
+      updateLabels();
       renderer.render(scene, camera);
       lastRender = now;
       needsRender = false;
-    } else if (changed && now - lastRender > 33) {
-      renderer.render(scene, camera);
-      lastRender = now;
     }
   }
   raf = requestAnimationFrame(frame);
@@ -454,22 +539,29 @@ export function createViewer(container, { onSelect } = {}) {
       const was = selected;
       selected = next;
       applyTargets();
-      if (next !== was && !preview) focusGroup(next);
-    },
-    // Exercise preview: { primary: [groups], secondary: [groups] } or null to stop.
-    setPreview(p) {
-      preview = p ? { primary: new Set(p.primary), secondary: new Set(p.secondary), t0: (performance.now() - t0) / 1000 } : null;
-      applyTargets();
-      if (p && !selected) focusGroup(null);
+      if (next !== was) focusGroup(next);
     },
     // Groups that pulse softly to draw the eye (the weakest muscles).
     setPulse(groups) {
       pulse = new Set(groups || []);
       needsRender = true;
     },
+    // A preset view always shows the whole body from that side. Keeping the
+    // selection would dim everything else and keeping the zoom would crop it,
+    // which together made "Back" look like an untrained back.
     setView(name) {
       if (!(name in VIEW_AZIMUTH)) return;
-      startView(VIEW_AZIMUTH[name], VIEW_POLAR, currentRadius(), controls.target.y);
+      if (selected) {
+        selected = null;
+        applyTargets();
+        onSelect?.(null);
+      }
+      startView(VIEW_AZIMUTH[name], VIEW_POLAR, fitDist, TARGET.y);
+    },
+    setLabels(on) {
+      labelsOn = !!on;
+      if (!labelsOn) hideLabels();
+      needsRender = true;
     },
     setPalette({ base, floor: floorColor } = {}) {
       if (base) {
@@ -488,6 +580,7 @@ export function createViewer(container, { onSelect } = {}) {
       dom.removeEventListener("pointerdown", onDown);
       dom.removeEventListener("pointerup", onUp);
       controls.dispose();
+      labelLayer.remove();
       for (const g of geometries) g.dispose();
       for (const m of Object.values(materials)) m.dispose();
       for (const m of outlineMaterials) m.dispose();

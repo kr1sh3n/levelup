@@ -537,7 +537,7 @@ export function useGameStore(user) {
   );
 
   const addSet = useCallback(
-    (dayId, ex, weight, reps, { warmup = false } = {}) =>
+    (dayId, ex, weight, reps, { warmup = false, rir = null } = {}) =>
       commit((prev) => {
         const w = num(weight);
         const r = Math.round(num(reps));
@@ -551,7 +551,12 @@ export function useGameStore(user) {
         const isWeightPr = !warmup && w > 0 && w > prevPr.maxWeight;
         const isVolumePr = !warmup && w > 0 && w * r > prevPr.maxVolume;
         const isPr = isWeightPr || isVolumePr;
-        const newSet = warmup ? { weight: w, reps: r, pr: false, warmup: true } : { weight: w, reps: r, pr: isWeightPr };
+        // RIR (reps in reserve) is how many more reps were left in the tank.
+        // Warm-ups never carry one, and null means "not recorded".
+        const rr = rir == null || rir === "" ? null : Math.max(0, Math.min(10, Math.round(num(rir))));
+        const newSet = warmup
+          ? { weight: w, reps: r, pr: false, warmup: true }
+          : { weight: w, reps: r, pr: isWeightPr, ...(rr == null ? {} : { rir: rr }) };
         const base = {
           ...prev,
           prs: warmup

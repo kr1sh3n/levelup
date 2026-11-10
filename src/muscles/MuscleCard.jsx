@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { GROUP_IDS, groupLabel } from "./taxonomy";
-import { GOALS, colorFor, goalOf, schemeOf } from "./targets";
+import { GOALS, colorFor, goalOf } from "./targets";
 import { collectSets, computeVolumes, latestOffset, periodRange, rangeLabel } from "./volume";
 import { focusList } from "./insights";
 
@@ -9,12 +9,11 @@ import { focusList } from "./insights";
 const loadOverlay = () => import("./MuscleMapOverlay");
 const MuscleMapOverlay = lazy(loadOverlay);
 
-export default function MuscleCard({ store }) {
+export default function MuscleCard({ store, setTab }) {
   const { state, today } = store;
   const [open, setOpen] = useState(false);
   const mm = state.muscleMap;
   const goal = goalOf(mm.goal);
-  const scheme = schemeOf(mm.scheme);
   const indirect = mm.indirect ?? GOALS[goal].indirect;
   const kind = mm.period === "week" ? "week" : "rolling";
   const { workoutLogs, importedSets, workoutPlan, exerciseMuscles } = state;
@@ -50,7 +49,7 @@ export default function MuscleCard({ store }) {
             <span className="mm-card-label">Most trained</span>
             <span className="mm-card-chips">
               {summary.top.map((g) => (
-                <span key={g} className="mm-card-chip" style={{ borderColor: colorFor(summary.v.byGroup[g].effective, goal, scheme) }}>
+                <span key={g} className="mm-card-chip" style={{ borderColor: colorFor(summary.v.byGroup[g].effective, goal) }}>
                   {groupLabel(g)} {Math.round(summary.v.byGroup[g].effective * 10) / 10}
                 </span>
               ))}
@@ -61,7 +60,7 @@ export default function MuscleCard({ store }) {
               <span className="mm-card-label">Focus on</span>
               <span className="mm-card-chips">
                 {summary.focus.map((f) => (
-                  <span key={f.group} className="mm-card-chip" style={{ borderColor: colorFor(f.effective, goal, scheme) }}>
+                  <span key={f.group} className="mm-card-chip" style={{ borderColor: colorFor(f.effective, goal) }}>
                     {f.label} {Math.round(f.effective * 10) / 10}
                   </span>
                 ))}
@@ -77,7 +76,7 @@ export default function MuscleCard({ store }) {
       {open &&
         createPortal(
           <Suspense fallback={<div className="mm-overlay mm-loading">Loading 3D…</div>}>
-            <MuscleMapOverlay store={store} onClose={() => setOpen(false)} />
+            <MuscleMapOverlay store={store} setTab={setTab} onClose={() => setOpen(false)} />
           </Suspense>,
           document.body
         )}

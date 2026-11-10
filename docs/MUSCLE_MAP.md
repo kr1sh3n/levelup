@@ -6,7 +6,7 @@ A 3D, pixel-art body in **Profile -> Muscle Map**. Every muscle is its own block
 
 1. Profile -> **Open Muscle Map**. Drag to rotate, pinch/scroll to zoom, use **Front / Back / L / R** to jump views, tap a muscle for its details.
 2. **Import your data**: Settings and data -> **Import spreadsheet**, or just log workouts in the Gym tab (they are counted automatically).
-3. Pick a colour scheme (Zones, Heat, Colour-blind), a goal and a time window (last 7 days or Mon-Sun, stepping back week by week).
+3. Pick a view (Weekly sets or Recovery), a goal and a time window (last 7 days or Mon-Sun, stepping back week by week).
 4. **Try demo data** shows a made-up, deliberately lopsided training week so every colour appears.
 
 ### Spreadsheet format
@@ -64,7 +64,7 @@ sets {date, name, weight, reps, warmup}      state.importedSets  +  state.workou
       |  exercises.js  (library + fuzzy name match + your own assignments)
       v
 volume.js  ->  weekly effective sets per muscle group
-      |  targets.js (zones, colour schemes)   insights.js (focus list, balance)
+      |  targets.js (zones, colours)           insights.js (focus list, balance)
       v
 MuscleMapOverlay.jsx  ->  colours  ->  viewer3d.js (three.js)  <-  public/models/body.glb
 ```
@@ -74,7 +74,7 @@ MuscleMapOverlay.jsx  ->  colours  ->  viewer3d.js (three.js)  <-  public/models
 | `src/muscles/taxonomy.js` | the 18 muscle groups |
 | `src/muscles/exercises.js` | exercise library, name normalising and matching |
 | `src/muscles/volume.js` | sets -> weekly volume, date windows, history |
-| `src/muscles/targets.js` | zones per goal, colour schemes, legend |
+| `src/muscles/targets.js` | zones per goal, the colour palette, legend |
 | `src/muscles/insights.js` | where to focus, balance checks, exercise suggestions |
 | `src/muscles/importer.js` | CSV/XLSX import |
 | `src/muscles/demo.js` | demo training data |
@@ -108,6 +108,53 @@ All of these live in `src/muscles/viewer3d.js` and switch to static versions whe
 
 - **Intro sweep:** colours fill in from the feet up when the map opens.
 - **Idle:** a slight breathing motion (chest and abs swell, the figure rises a hair). The weakest three muscles from "Where to focus" pulse softly.
-- **Tap to focus:** selecting a muscle (tap, or a row in the focus list) flies the camera to it, from the front or back as appropriate, and swells it while the others dim. Deselecting zooms back out.
-- **Exercise preview:** pick an exercise (or tap one under "What counted") and its main muscles swell and glow once per rep while helpers glow softly. It uses the same exercise-to-muscle data as the volume maths. The swell is a vertex push along the normals, so it needs no rig.
+- **Tap to focus:** selecting a muscle (tap, or a row in the focus list) flies the camera to it, from the front or back as appropriate, and swells it while the others dim. The framing keeps the muscle at ~45% of the view and never closer than half the figure, so the silhouette stays readable and you can tell where you are. Deselecting, or any preset view, zooms back out.
+- **Preset views:** `Front/Back/L/R` always clear the selection and reframe the whole body. They used to keep both, which cropped the figure and dimmed everything but the selected muscle - a back view then looked untrained when it was not.
+- **Muscle labels:** names are plain DOM positioned over the canvas each frame. Only muscles facing the camera are labelled, overlapping ones are dropped, and the cap is 6 on a phone and 14 on a wider screen. Each label is anchored to the centroid of *one side* of the muscle: a left/right pair shares a mesh, so its bounding-box centre sits on the midline and would caption the belly "Forearms". The `Aa` button toggles them.
 - **Week time-lapse:** the play button in the period bar steps from the oldest week with data to the latest, recolouring the figure each second.
+
+
+## Recovery mode
+
+A second way to colour the body, next to weekly sets. It answers "what should I
+train today?" rather than "am I doing enough?".
+
+Each group is coloured by how long since its last real session (warm-ups and
+anything outside a 21-day lookback are ignored): worked today, recovering,
+nearly ready, ready, or not trained at all. Recovery is always measured from
+today, so the period arrows and the time-lapse are hidden in this mode.
+
+The window scales with that session's size — up to 4 effective sets gets 2 days,
+up to 10 gets 3, more than that gets 4. The reasoning, with caveats, is at the
+top of `src/muscles/recovery.js`: muscle protein synthesis stays raised for
+roughly 24-48 h, force and soreness usually clear in 24-72 h, and two sessions a
+week per muscle beat one at matched volume. So "ready" is a nudge to train the
+muscle again, not a warning to stay away from it — and it is a rule of thumb
+from population averages, not a readiness test.
+
+The panel below the figure lists what is ready (longest-rested first, with
+never-trained groups last) and what is still resting with a rough days-to-go.
+Every muscle's detail card carries a "Last trained" line in both modes.
+
+
+## Set quality (RIR)
+
+Each working set can record **reps in reserve** - how many more reps you could
+have done. The Gym tab has a small `RIR` picker beside weight and reps, warm-ups
+never carry one, and leaving it blank means "not recorded". A spreadsheet import
+picks up a `RIR` column, and an `RPE` column too: RPE is the same idea upside
+down (RPE 10 = nothing left), so it is converted with `RIR = 10 - RPE`.
+
+A muscle's detail card then shows how many of its sets were taken within
+`HARD_SET_RIR` (3) reps of failure, plus the average reps left in reserve.
+
+**RIR does not change the set counts.** Sets taken far from failure drive less
+growth, so discounting them is tempting, but silently reweighting every number
+the moment RIR starts being logged would make your own history inconsistent.
+It is shown first; quality-weighting can become an explicit setting later.
+
+## Acting on the advice
+
+"Ways to add volume" chips add the exercise straight into a day of your workout
+plan (3 sets of 8-12), then offer to jump to the Gym tab. Previously the advice
+named an exercise and left you to remember it.

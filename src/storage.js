@@ -53,7 +53,7 @@ export function defaultState() {
     // Muscle map
     importedSets: {}, // sets imported from a spreadsheet: { "YYYY-MM-DD": [{ name, weight, reps, warmup? }] }
     exerciseMuscles: {}, // the user's own muscle assignment per exercise: { [exerciseKey]: { [group]: "direct" | "indirect" } }
-    muscleMap: { goal: "both", scheme: "zones", indirect: null, period: "rolling" }, // indirect null = the goal's default; period "rolling" = last 7 days, "week" = Mon-Sun
+    muscleMap: { goal: "both", indirect: null, period: "rolling", mode: "volume" }, // indirect null = the goal's default; period "rolling" = last 7 days, "week" = Mon-Sun; mode "volume" = weekly sets, "recovery" = time since trained
     prs: {}, // { exerciseNameKey: { name, maxWeight, maxVolume } }
 
     // Meals — diet plan template + daily food log
@@ -134,6 +134,7 @@ function migrateV1(old) {
   };
 }
 
+const pick = (o, keys) => Object.fromEntries(keys.map((k) => [k, o[k]]));
 const isObj = (v) => !!v && typeof v === "object" && !Array.isArray(v);
 
 // Older logs stored only the exercise id; the muscle map needs the name, and the
@@ -176,7 +177,9 @@ export function migrate(raw) {
     workoutLogs: withExerciseNames(s.workoutLogs, Array.isArray(s.workoutPlan?.days) ? s.workoutPlan.days : []),
     importedSets: isObj(s.importedSets) ? s.importedSets : {},
     exerciseMuscles: isObj(s.exerciseMuscles) ? s.exerciseMuscles : {},
-    muscleMap: { ...base.muscleMap, ...(isObj(s.muscleMap) ? s.muscleMap : {}) },
+    // Only known keys survive, so settings we have dropped (e.g. the old colour
+    // scheme) do not linger in saves forever.
+    muscleMap: pick({ ...base.muscleMap, ...(isObj(s.muscleMap) ? s.muscleMap : {}) }, Object.keys(base.muscleMap)),
   };
 }
 
