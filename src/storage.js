@@ -28,7 +28,7 @@ export function defaultState() {
   return {
     schemaVersion: SCHEMA_VERSION,
     profileName: "",
-    theme: "arcade", // "arcade" | "batman" | "kitty"
+    theme: "arcade", // "arcade" | "phantom" | "kitty"
 
     totalXp: 0,
     skillXp: { fitness: 0, mind: 0, creator: 0, health: 0 },

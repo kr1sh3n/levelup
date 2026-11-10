@@ -41,35 +41,35 @@
 }
 
 /* ── Batman: Gotham black, gunmetal, bat-signal yellow ── */
-:root[data-theme="batman"] {
-  /* Gotham night: violet-black, night-sky violet, moon lavender, belt-buckle gold */
-  --bg: #0d0a16;
-  --surface: rgba(24, 18, 40, 0.9);
-  --surface-solid: #18122a;
-  --surface2: rgba(32, 24, 54, 0.86);
-  --border: rgba(140, 110, 230, 0.18);
-  --border-strong: rgba(140, 110, 230, 0.4);
-  --purple: #7c5cd6;
-  --purple-light: #a58cf0;
-  --purple-bright: #c9bdf7;
-  --purple-glow: rgba(124, 92, 214, 0.45);
-  --text: #ece8f7;
-  --text-muted: #8f88ad;
-  --orange: #e0b04a;
+:root[data-theme="phantom"] {
+  /* Haunted wood: void black, bruised purple, hot magenta glow */
+  --bg: #0b0714;
+  --surface: rgba(28, 16, 44, 0.9);
+  --surface-solid: #1c102c;
+  --surface2: rgba(40, 22, 62, 0.86);
+  --border: rgba(190, 90, 220, 0.18);
+  --border-strong: rgba(190, 90, 220, 0.42);
+  --purple: #8b43c9;
+  --purple-light: #b472ea;
+  --purple-bright: #e3b8ff;
+  --purple-glow: rgba(160, 70, 220, 0.45);
+  --text: #f2e7fb;
+  --text-muted: #9a84b5;
+  --orange: #ff4d8d;
 
-  --accent: #6d4fc8;
-  --accent-dark: #4a3394;
-  --accent-hot: #9a7cf0;
-  --accent-light: #c9bdf7;
-  --neon: #8f6bf0;
-  --neon-deep: #2a1a5e;
-  --neon-soft: #c9c3f2;
+  --accent: #8a2fc4;
+  --accent-dark: #5a1a86;
+  --accent-hot: #ff2d95;
+  --accent-light: #e3b8ff;
+  --neon: #c04bf0;
+  --neon-deep: #2d0d4a;
+  --neon-soft: #f0c2ff;
   --on-accent: #ffffff;
-  --accent-rgb: 109, 79, 200;
-  --accent-light-rgb: 165, 140, 240;
-  --neon-rgb: 124, 92, 214;
-  --accent-2-rgb: 58, 36, 120;
-  --base-rgb: 16, 12, 28;
+  --accent-rgb: 138, 47, 196;
+  --accent-light-rgb: 227, 184, 255;
+  --neon-rgb: 192, 75, 240;
+  --accent-2-rgb: 70, 20, 110;
+  --base-rgb: 14, 8, 22;
 }
 
 /* ── Hello Kitty: soft pink & white with a red bow (light theme) ── */
@@ -1636,16 +1636,16 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 :root[data-theme="kitty"] .app::after { display: none; }
 :root[data-theme="kitty"] .logo,
 :root[data-theme="kitty"] .auth-logo { animation: none; }
-:root[data-theme="batman"] .app::after { opacity: 0.75; }
-/* gold accent (belt buckle / lit windows) for streak + XP */
-:root[data-theme="batman"] .streak-badge {
-  background: linear-gradient(135deg, rgba(224, 176, 74, 0.16), rgba(224, 176, 74, 0.04));
-  border-color: rgba(224, 176, 74, 0.4);
-  box-shadow: 0 0 14px rgba(224, 176, 74, 0.18);
+:root[data-theme="phantom"] .app::after { opacity: 0.75; }
+/* magenta accent for streak + XP */
+:root[data-theme="phantom"] .streak-badge {
+  background: linear-gradient(135deg, rgba(255, 77, 141, 0.16), rgba(255, 77, 141, 0.04));
+  border-color: rgba(255, 77, 141, 0.4);
+  box-shadow: 0 0 14px rgba(255, 77, 141, 0.2);
 }
-:root[data-theme="batman"] .xp-current { color: #e0b04a; }
+:root[data-theme="phantom"] .xp-current { color: #ff4d8d; }
 /* faint pixel moon over the night sky */
-:root[data-theme="batman"] .app {
+:root[data-theme="phantom"] .app {
   background:
     linear-gradient(180deg, rgba(58, 36, 120, 0.22), transparent 320px),
     rgba(var(--base-rgb), 0.4);
@@ -1720,21 +1720,21 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 /* ── Batman artwork ── */
 .pixel-art { image-rendering: pixelated; }
 .session-art.wide { height: auto; width: 96px; top: 18px; right: 10px; transform: rotate(-6deg); }
-:root[data-theme="batman"] .section-img { height: 20px; filter: drop-shadow(0 0 4px rgba(var(--neon-rgb), 0.7)); }
-:root[data-theme="batman"] .session-art { filter: drop-shadow(0 0 8px rgba(var(--neon-rgb), 0.55)); }
-:root[data-theme="batman"] .logo-img { filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.75)); }
+:root[data-theme="phantom"] .section-img { height: 20px; filter: drop-shadow(0 0 4px rgba(var(--neon-rgb), 0.7)); }
+:root[data-theme="phantom"] .session-art { filter: drop-shadow(0 0 8px rgba(var(--neon-rgb), 0.55)); }
+:root[data-theme="phantom"] .logo-img { filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.75)); }
 /* Sign-in screen: Gotham night scene behind the form */
-:root[data-theme="batman"] .auth-screen {
+:root[data-theme="phantom"] .auth-screen {
   background:
     linear-gradient(180deg, rgba(13, 10, 22, 0.35), rgba(13, 10, 22, 0.88) 70%),
-    url("./assets/batman-scene.png") center top / cover no-repeat;
+    url("./assets/phantom-scene.png") center top / cover no-repeat;
   image-rendering: pixelated;
 }
-:root[data-theme="batman"] .auth-screen .card,
-:root[data-theme="batman"] .auth-screen .auth-logo,
-:root[data-theme="batman"] .auth-screen .auth-tagline { image-rendering: auto; }
-:root[data-theme="batman"] .header {
-  background-image: url("./assets/bat-moon.png");
+:root[data-theme="phantom"] .auth-screen .card,
+:root[data-theme="phantom"] .auth-screen .auth-logo,
+:root[data-theme="phantom"] .auth-screen .auth-tagline { image-rendering: auto; }
+:root[data-theme="phantom"] .header {
+  background-image: url("./assets/phantom-moon.png");
   background-repeat: no-repeat;
   background-position: right 112px top 12px;
   background-size: 54px auto;
@@ -1928,3 +1928,14 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 /* Second line inside a focus/recovery row: the other tab's number. */
 .mm-sub { display: block; font-style: normal; font-size: 14px; color: var(--text-muted); margin-top: 1px; }
 .mm-recovery-dot { width: 12px; height: 12px; flex-shrink: 0; margin-top: 4px; border: 1px solid rgba(var(--hilite-rgb), 0.35); }
+
+
+/* ═══════════════════ SHAREABLE STATS CARD ═══════════════════ */
+.stats-card-stage { display: flex; justify-content: center; margin: 4px 0 12px; }
+.stats-card-canvas {
+  width: 100%; max-width: 320px; height: auto; display: block; border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(var(--shadow-rgb), 0.55), 0 0 22px var(--purple-glow);
+}
+.stats-card .form-actions { display: flex; gap: 8px; }
+.stats-card .form-actions .claim-btn { flex: 1; margin: 0; }
+@media (min-width: 560px) { .stats-card-canvas { max-width: 360px; } }

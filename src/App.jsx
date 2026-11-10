@@ -19,6 +19,7 @@ import {
 } from "./gameData";
 import { addDays } from "./storage";
 import MuscleCard from "./muscles/MuscleCard";
+import StatsCard from "./StatsCard";
 import { THEMES, THEME_IDS, applyTheme, themeOf } from "./themes";
 
 const SKILL_ORDER = ["fitness", "mind", "creator", "health"];
@@ -514,7 +515,7 @@ function ProfileTab({ store, setTab }) {
                     <img className="swatch-img" src={t.swatchImage} alt="" />
                   ) : !t.logoImage && t.icon && (
                     <span className="swatch-icon">
-                      <PixelIcon name={t.icon} size={t.icon === "bat" ? 34 : 26} />
+                      <PixelIcon name={t.icon} size={t.icon === "ghost" ? 30 : 26} />
                     </span>
                   )}
                 </span>
@@ -525,6 +526,8 @@ function ProfileTab({ store, setTab }) {
           })}
         </div>
       </div>
+
+      <StatsCard store={store} />
 
       <MuscleCard store={store} setTab={setTab} />
 
@@ -638,7 +641,7 @@ function Header({ store }) {
             <img className="logo-img" src={logoImage} alt="" />
           ) : themeIcon && (
             <span className="logo-icon">
-              <PixelIcon name={themeIcon} size={themeIcon === "bat" ? 30 : 24} />
+              <PixelIcon name={themeIcon} size={themeIcon === "ghost" ? 26 : 24} />
             </span>
           )}
           <div className="logo">PDASH</div>

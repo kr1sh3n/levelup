@@ -10,7 +10,8 @@ Turn your own goals, workouts, diet and challenges into a role-playing game. You
 - **Custom diet plans (Meals)** — create meals (Breakfast, Lunch, Snacks, Dinner or your own), add food items with quantity, calories, protein, carbs and fats, and log a whole meal in one tap. Daily calorie and macro totals are calculated automatically against editable targets; logged entries can be edited or removed.
 - **XP & levelling** — every 2000 XP is a level; skill trees (Fitness, Mind, Creator, Health); streak multipliers at 7/14/30 days; Sunday Boss Day bonus when every goal due that day is done.
 - **Muscle Map** — a 3D pixel-art body in Profile. Every muscle is coloured by weekly sets with tap-to-focus, a week time-lapse and a recovery view showing which muscles are ready to train, with research-based targets, a "where to focus" list and balance checks. Import a spreadsheet (.xlsx / .csv) or just log workouts; warm-up sets are excluded. See [docs/MUSCLE_MAP.md](docs/MUSCLE_MAP.md).
-- **Profile** — themes (Arcade Red, Batman, Hello Kitty), level progress, skill trees, key stats with a 4-week activity heatmap, and JSON backup export/import.
+- **Profile** — themes (Arcade Red, Phantom, Hello Kitty), level progress, skill trees, key stats with a 4-week activity heatmap, and JSON backup export/import.
+- **Shareable stats card** — a collectible-style card of your level, title, XP, streak, skills and most-trained muscle, drawn to a canvas and styled to the active theme. Save it as a PNG or send it straight to the share sheet.
 
 ## Run locally
 
