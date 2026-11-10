@@ -43,6 +43,16 @@ export default function StatsCard({ store }) {
     draw();
   }, [draw]);
 
+  // The palette comes from CSS custom properties, and the theme is applied by
+  // setting data-theme on <html>. That attribute can land after this component
+  // has already drawn, leaving the card showing the previous theme's colours
+  // until something else forced a redraw. Watch the attribute and redraw.
+  useEffect(() => {
+    const observer = new MutationObserver(() => draw());
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    return () => observer.disconnect();
+  }, [draw]);
+
   const toBlob = () =>
     new Promise((resolve) => {
       const canvas = canvasRef.current;
