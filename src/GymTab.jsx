@@ -147,7 +147,6 @@ function SetRow({ set, index, onDelete, locked }) {
       <span className="set-vol">{weightText(set.weight)} × {set.reps}</span>
       {set.rir != null && <span className="rir-tag">RIR {set.rir}</span>}
       {set.pr && <span className="pr-tag">PR</span>}
-      {set.warmup && <span className="pr-tag warm-tag">WARM-UP</span>}
       {!locked && (
         <button className="del-btn small" onClick={onDelete} aria-label={`Delete set ${index + 1}`}>×</button>
       )}
@@ -157,24 +156,19 @@ function SetRow({ set, index, onDelete, locked }) {
 
 function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   const { addSet, deleteSet, toggleExerciseDone, lastSessionFor } = store;
+  // Everything is typed by hand: nothing is prefilled from earlier sets.
+  const [weight, setWeight] = useState("");
+  const [reps, setReps] = useState("");
+  const [rir, setRir] = useState("");
+  const [err, setErr] = useState(null);
   const locked = !!log?.completedAt;
   const exLog = log?.ex[ex.id] || { sets: [], done: false };
   const last = lastSessionFor(ex.id);
-  // Start from the weight used last time as a real, editable value. A grey
-  // placeholder that looks filled in is exactly how blank sets were being
-  // saved as 0 kg.
-  const startWeight = exLog.sets.filter((s) => !s.warmup).at(-1)?.weight ?? last?.weight;
-  const [weight, setWeight] = useState(startWeight > 0 ? String(startWeight) : "");
-  const [reps, setReps] = useState("");
-  const [more, setMore] = useState(false);
-  const [warmup, setWarmup] = useState(false);
-  const [rir, setRir] = useState("");
-  const [err, setErr] = useState(null);
-  const working = exLog.sets.filter((s) => !s.warmup).length;
 
   function submit(e) {
     e.preventDefault();
     const w = weight.trim().replace(",", ".");
+    // A blank weight used to be saved as 0 kg. Ask instead (0 = bodyweight).
     if (w === "" || Number.isNaN(Number(w)) || Number(w) < 0) {
       setErr("Enter the weight you lifted (0 for bodyweight).");
       return;
@@ -184,11 +178,11 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
       return;
     }
     setErr(null);
-    addSet(day.id, ex, w, reps, { warmup, rir });
+    addSet(day.id, ex, w, reps, { rir });
+    setWeight("");
     setReps("");
-    setWarmup(false);
     setRir("");
-    onSetAdded(warmup ? 0 : ex.restSec);
+    onSetAdded(ex.restSec);
   }
 
   return (
@@ -200,19 +194,19 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
           {ex.notes && <div className="exercise-cue">{ex.notes}</div>}
         </div>
         <button
-          className={`done-pill ${exLog.done ? "on" : ""}`}
+          type="button"
+          className={`done-check ${exLog.done ? "on" : ""}`}
           onClick={() => toggleExerciseDone(day.id, ex.id)}
           disabled={locked}
-          aria-pressed={exLog.done}
+          aria-label={exLog.done ? `Unmark ${ex.name}` : `Mark ${ex.name} done`}
+          title="Mark exercise done"
         >
-          {exLog.done ? "✓ DONE" : "MARK DONE"}
+          {exLog.done ? "✓" : ""}
         </button>
       </div>
 
       <div className="exercise-last">
-        {last
-          ? `Last time: ${weightText(last.weight)} × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})`
-          : `First time: pick a weight you can lift for ${ex.reps || DEFAULT_REPS} good reps.`}
+        {last ? `Last time: ${weightText(last.weight)} × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})` : "No history yet"}
       </div>
 
       {exLog.sets.map((s, i) => (
@@ -221,70 +215,46 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
 
       {!locked && (
         <>
-          <div className="set-next">
-            {working < (Number(ex.sets) || 0) ? `Set ${working + 1} of ${ex.sets}` : "All planned sets logged — add more if you like"}
-          </div>
           <form className="set-form" onSubmit={submit} noValidate>
-            <label className="set-field">
-              <span>kg</span>
-              <input
-                className="meal-input small"
-                type="text"
-                inputMode="decimal"
-                autoComplete="off"
-                placeholder="e.g. 20"
-                value={weight}
-                onChange={(e) => setWeight(e.target.value)}
-                aria-label={`${ex.name} weight in kg`}
-              />
-            </label>
+            <input
+              className="meal-input small"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="kg"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              aria-label={`${ex.name} weight in kg`}
+            />
             <span className="set-x">×</span>
-            <label className="set-field">
-              <span>reps</span>
-              <input
-                className="meal-input small"
-                type="text"
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="e.g. 8"
-                value={reps}
-                onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))}
-                aria-label={`${ex.name} reps`}
-              />
-            </label>
+            <input
+              className="meal-input small"
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="reps"
+              value={reps}
+              onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))}
+              aria-label={`${ex.name} reps`}
+            />
+            <select
+              className="rir-select"
+              value={rir}
+              onChange={(e) => setRir(e.target.value)}
+              aria-label={`${ex.name} reps in reserve`}
+              title="Reps in reserve: how many more reps you could have done"
+            >
+              <option value="">RIR</option>
+              <option value="0">0 — failure</option>
+              <option value="1">1 left</option>
+              <option value="2">2 left</option>
+              <option value="3">3 left</option>
+              <option value="4">4 left</option>
+              <option value="5">5+ left</option>
+            </select>
             <button type="submit" className="add-set-btn">+ SET</button>
           </form>
           {err && <div className="form-msg err">{err}</div>}
-
-          {more && (
-            <div className="set-extras">
-              <select
-                className="meal-input rir-select"
-                value={rir}
-                onChange={(e) => setRir(e.target.value)}
-                aria-label={`${ex.name} reps in reserve`}
-              >
-                <option value="">Reps left in the tank?</option>
-                <option value="0">0 — couldn&apos;t do another</option>
-                <option value="1">1 more</option>
-                <option value="2">2 more</option>
-                <option value="3">3 more</option>
-                <option value="4">4 more</option>
-                <option value="5">5 or more</option>
-              </select>
-              <button
-                type="button"
-                className={`warmup-toggle wide ${warmup ? "on" : ""}`}
-                onClick={() => setWarmup(!warmup)}
-                aria-pressed={warmup}
-              >
-                {warmup ? "✓ WARM-UP SET" : "WARM-UP SET"}
-              </button>
-            </div>
-          )}
-          <button type="button" className="link-btn more-link" onClick={() => setMore(!more)} aria-expanded={more}>
-            {more ? "Fewer options" : "More options: warm-up, reps left"}
-          </button>
         </>
       )}
     </div>
@@ -303,7 +273,6 @@ function SessionCard({ store }) {
   const earnedToday = state.workoutXpDates.includes(store.today);
 
   function pick(id) {
-    if (hasProgress && !window.confirm("Switching workouts clears the sets you've logged today. Continue?")) return;
     selectWorkoutDay(id);
   }
 
@@ -341,7 +310,7 @@ function SessionCard({ store }) {
       <div className="workout-type">{activeDay.name}</div>
       {total > 0 && (
         <div className={`lift-progress-text ${done ? "complete" : ""}`}>
-          {done ? `✓ Workout complete — ${setCount} sets logged` : `${doneCount} / ${total} exercises done · ${setCount} sets`}
+          {done ? `✓ Workout complete — ${setCount} ${setCount === 1 ? "set" : "sets"} logged` : `${doneCount} / ${total} exercises done · ${setCount} ${setCount === 1 ? "set" : "sets"}`}
         </div>
       )}
 
@@ -351,10 +320,17 @@ function SessionCard({ store }) {
         </button>
       )}
       {done && <button className="claim-btn ghost" onClick={reopenWorkout}>REOPEN TO EDIT</button>}
-      {!done && (
-        <button type="button" className="claim-btn ghost small-btn" onClick={() => pick(null)}>
-          ← SWITCH WORKOUT
-        </button>
+      {/* Tapped the wrong one? Until the first set is logged, the other
+          workouts stay one tap away. After that the list goes away. */}
+      {!done && !hasProgress && days.length > 1 && (
+        <div className="start-other">
+          <span>Wrong workout?</span>
+          {days.filter((d) => d.id !== activeDay.id).map((d) => (
+            <button key={d.id} type="button" className="mini-btn" onClick={() => pick(d.id)}>
+              {d.name} ▶
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

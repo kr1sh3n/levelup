@@ -2142,8 +2142,12 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-anchor { scroll-margin-top: 12px; }
 /* Logged-set rows: keep "Set 1 · 27.5 kg × 8" on one line on a phone. */
 .set-row .set-num { flex-shrink: 0; width: auto; min-width: 42px; white-space: nowrap; }
-.set-row .set-vol { font-size: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.set-row { gap: 6px; }
+.set-row .set-vol { font-size: 11px; white-space: nowrap; min-width: 0; }
+.set-row .set-num { min-width: 0; font-size: 10px; }
 .name-edit-btn { display: block; margin: 6px auto 4px; }
 /* The tab bar floats over the overlay; leave room so the last card clears it. */
 .mm-overlay .mm-scroll { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
 .mm-full { z-index: 110; }
+/* "Wrong workout?" — only shown before the first set is logged. */
+.start-other { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 16px; color: var(--text-muted); }
