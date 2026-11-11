@@ -291,7 +291,7 @@ function FocusPanel({ volumes, goal, colorOf, onPick, recovery }) {
             <button key={g} type="button" className="mm-focus-row" onClick={() => onPick(g)}>
               <span className="mm-swatch" style={{ background: colorOf(volumes.byGroup[g].effective) }} />
               <span className="mm-focus-name">{groupLabel(g)}</span>
-              <span className="mm-focus-nums">{fmt(round1(volumes.byGroup[g].effective))} sets</span>
+              <span className="mm-focus-nums">{fmt(round1(volumes.byGroup[g].effective))} {round1(volumes.byGroup[g].effective) === 1 ? "set" : "sets"}</span>
             </button>
           ))}
         </div>
