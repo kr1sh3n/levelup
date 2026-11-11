@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import MuscleViewer from "./MuscleViewer";
 import ImportDialog, { AssignDialog } from "./ImportDialog";
 import { GROUP_IDS, MUSCLE_GROUPS, groupLabel } from "./taxonomy";
 import { GOALS, GOAL_IDS, ZONE_KEYS, ZONE_LABEL, colorFor, goalOf, legendItems, recoveryColorFor, recoveryLegendItems, zoneFor } from "./targets";
 import { HARD_SET_RIR, collectSets, computeVolumes, dataBounds, daysBetween, latestOffset, makeResolver, dayLabel, periodRange, rangeLabel, weekStart, weeklyHistory } from "./volume";
 import { makeDemoSets } from "./demo";
+import { DEFAULT_REPS, DEFAULT_REST } from "../templates";
 import { agoText, computeRecovery, readyList, recoveryText, restingList } from "./recovery";
 import { balanceChecks, describeGroup, focusList, overList, suggestExercises, targetBand } from "./insights";
 import { THEMES, themeOf } from "../themes";
@@ -56,7 +58,7 @@ function GroupDetail({ group, volumes, prevVolumes, goal, colorOf, history, plan
           <div className="mm-detail-name">{groupLabel(group)}</div>
           <div className="mm-detail-inc">{MUSCLE_GROUPS[group].includes}</div>
         </div>
-        <button type="button" className="icon-btn" onClick={onClear} aria-label="Close muscle details">×</button>
+        <button type="button" className="claim-btn ghost small-btn" onClick={onClear} aria-label="Close muscle details">CLOSE</button>
       </div>
 
       <div className="mm-detail-num">
@@ -180,7 +182,7 @@ function GroupDetail({ group, volumes, prevVolumes, goal, colorOf, history, plan
           )}
           {added && (
             <div className="mm-note mm-added">
-              Added <strong>{added.name}</strong> to {added.day} — 3 sets of 8–12.{" "}
+              Added <strong>{added.name}</strong> to {added.day} — 3 sets of 6–8.{" "}
               <button type="button" className="link-btn" onClick={() => onAddToPlan(null, null, true)}>Open Gym</button>
             </div>
           )}
@@ -336,6 +338,9 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
   const [showSettings, setShowSettings] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [labels, setLabels] = useState(true);
+  // The 3D figure opens full-screen; the page underneath keeps everything else.
+  const [full, setFull] = useState(false);
+  const detailRef = useRef(null);
 
   const { from, to } = periodRange(kind, today, offset);
   const { from: prevFrom, to: prevTo } = periodRange(kind, today, offset + 1);
@@ -377,7 +382,7 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
       setTab?.("gym");
       return;
     }
-    store.addExercise(dayId, { name, sets: 3, reps: "8-12", targetWeight: "", restSec: 120, notes: "" });
+    store.addExercise(dayId, { name, sets: 3, reps: DEFAULT_REPS, restSec: DEFAULT_REST, notes: "" });
   }
   const readyCount = useMemo(() => readyList(recovery, 99).filter((r) => r.status === "ready").length, [recovery]);
   const restingCount = useMemo(() => restingList(recovery).length, [recovery]);
@@ -426,10 +431,19 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
   }
 
   useEffect(() => {
-    const onKey = (e) => e.key === "Escape" && onClose();
+    const onKey = (e) => {
+      if (e.key !== "Escape") return;
+      if (full) setFull(false);
+      else onClose();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, full]);
+
+  // Leaving the 3D view with a muscle picked: bring its details into view.
+  useEffect(() => {
+    if (!full && selected) detailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [full, selected]);
 
   const askView = (name) => setView((v) => ({ name, n: (v?.n || 0) + 1 }));
 
@@ -455,8 +469,8 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
   return (
     <div className="mm-overlay" role="dialog" aria-modal="true" aria-label="Muscle map">
       <div className="mm-top">
+        <button type="button" className="claim-btn ghost small-btn mm-back" onClick={onClose}>← BACK</button>
         <div className="mm-title">MUSCLE MAP</div>
-        <button type="button" className="icon-btn" onClick={onClose} aria-label="Close muscle map">×</button>
       </div>
 
       <div className="mm-controls">
@@ -486,31 +500,24 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
         )}
       </div>
 
-      <div className="mm-stage">
-        <MuscleViewer
-          colors={colors}
-          selected={selected}
-          onSelect={setSelected}
-          view={view}
-          baseColor={theme.mapBase}
-          floorColor={theme.mapFloor}
-          pulse={pulseGroups}
-          labels={labels}
-        />
-        <div className="mm-views">
-          {[["front", "Front"], ["back", "Back"], ["left", "L"], ["right", "R"]].map(([k, l]) => (
-            <button key={k} type="button" className="mm-view-btn" onClick={() => askView(k)}>{l}</button>
-          ))}
-          <button
-            type="button"
-            className={`mm-view-btn ${labels ? "on" : ""}`}
-            onClick={() => setLabels(!labels)}
-            aria-pressed={labels}
-            aria-label={labels ? "Hide muscle names" : "Show muscle names"}
-          >
-            Aa
-          </button>
-        </div>
+      {/* Preview: a live picture of your week, not an interactive control. Touch
+          passes through so swiping scrolls the page instead of spinning the
+          model; tapping opens the full 3D view. Only one 3D scene exists at a
+          time, so the phone never runs two. */}
+      <button type="button" className="mm-stage mm-preview" onClick={() => setFull(true)} aria-label="Open the 3D muscle map full screen">
+        {!full && (
+          <MuscleViewer
+            colors={colors}
+            selected={selected}
+            onSelect={setSelected}
+            view={view}
+            baseColor={theme.mapBase}
+            floorColor={theme.mapFloor}
+            pulse={pulseGroups}
+            labels={false}
+          />
+        )}
+        <span className="mm-preview-cta">⤢ TAP TO EXPLORE IN 3D</span>
         <div className="mm-stats">
           {mode === "recovery" ? (
             <><strong>{readyCount}</strong> ready · <strong>{restingCount}</strong> resting</>
@@ -519,7 +526,67 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
           )}
         </div>
         {demo && <div className="mm-badge">DEMO DATA</div>}
-      </div>
+      </button>
+
+      {full && createPortal(
+        <div className="mm-full" role="dialog" aria-modal="true" aria-label="3D muscle map">
+          <div className="mm-full-top">
+            <button type="button" className="claim-btn ghost small-btn" onClick={() => setFull(false)}>← BACK</button>
+            <div className="mm-full-hint">Drag to turn · pinch to zoom · tap a muscle</div>
+          </div>
+          <div className="mm-full-stage">
+            <MuscleViewer
+              colors={colors}
+              selected={selected}
+              onSelect={setSelected}
+              view={view}
+              baseColor={theme.mapBase}
+              floorColor={theme.mapFloor}
+              pulse={pulseGroups}
+              labels={labels}
+            />
+            <div className="mm-views">
+              {[["front", "Front"], ["back", "Back"], ["left", "L"], ["right", "R"]].map(([k, l]) => (
+                <button key={k} type="button" className="mm-view-btn" onClick={() => askView(k)}>{l}</button>
+              ))}
+              <button
+                type="button"
+                className={`mm-view-btn ${labels ? "on" : ""}`}
+                onClick={() => setLabels(!labels)}
+                aria-pressed={labels}
+                aria-label={labels ? "Hide muscle names" : "Show muscle names"}
+              >
+                Aa
+              </button>
+            </div>
+          </div>
+          <div className="mm-legend" role="list" aria-label="Colour legend">
+            {legend.map((l) => (
+              <div key={l.key} className="mm-legend-item" role="listitem">
+                <span className="mm-swatch" style={{ background: l.key === "none" ? none : l.color }} />
+                <span>{l.label}</span>
+                <em>{l.range}</em>
+              </div>
+            ))}
+          </div>
+          {selected ? (
+            <div className="mm-full-pick">
+              <div>
+                <strong>{groupLabel(selected)}</strong>
+                <span className="mm-full-pick-sub">
+                  {mode === "recovery"
+                    ? agoText(recovery.byGroup[selected].daysSince)
+                    : `${fmt(round1(volumes.byGroup[selected].effective))} ${round1(volumes.byGroup[selected].effective) === 1 ? "set" : "sets"} this week`}
+                </span>
+              </div>
+              <button type="button" className="claim-btn small-btn" onClick={() => setFull(false)}>SEE DETAILS</button>
+            </div>
+          ) : (
+            <div className="mm-full-pick muted">Tap any muscle to see its numbers.</div>
+          )}
+        </div>,
+        document.body
+      )}
 
       <div className="mm-legend" role="list" aria-label="Colour legend">
         {legend.map((l) => (
@@ -552,6 +619,9 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
           </div>
         )}
 
+        {hasData && selected && (
+          <div ref={detailRef} className="mm-anchor" />
+        )}
         {hasData && selected && (
           <GroupDetail
             group={selected}

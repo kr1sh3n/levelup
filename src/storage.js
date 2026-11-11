@@ -88,8 +88,7 @@ function migrateV1(old) {
         name: e.name,
         sets: Number(e.targetSets) || 3,
         reps: e.repLow && e.repHigh ? `${e.repLow}-${e.repHigh}` : "",
-        targetWeight: "",
-        restSec: 90,
+        restSec: 120,
         notes: e.tag === "isolation" ? "Take to failure" : "Leave 1–2 reps in reserve",
       })),
     });

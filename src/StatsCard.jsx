@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { CARD_H, CARD_W, cardData, renderCard } from "./cardRender";
 import { GROUP_IDS, groupLabel } from "./muscles/taxonomy";
 import { collectSets, computeVolumes, latestOffset, makeResolver, periodRange } from "./muscles/volume";
-import { getLevel, getXpInCurrentLevel } from "./gameData";
+import { getLevel, getXpInCurrentLevel, playerName } from "./gameData";
 import { THEMES, themeOf } from "./themes";
 
 // The stats card: a collectible-style summary of where you are, drawn to a
@@ -36,8 +36,8 @@ export default function StatsCard({ store }) {
     } catch {
       /* the card is still worth showing without it */
     }
-    await renderCard(canvas, cardData(state, level, xpInLevel, { topMuscle }), theme);
-  }, [state, today, level, xpInLevel, theme]);
+    await renderCard(canvas, cardData(state, level, xpInLevel, { topMuscle }, store.user), theme);
+  }, [state, today, level, xpInLevel, theme, store.user]);
 
   useEffect(() => {
     draw();
@@ -124,7 +124,7 @@ export default function StatsCard({ store }) {
           className="stats-card-canvas"
           style={{ aspectRatio: `${CARD_W} / ${CARD_H}` }}
           role="img"
-          aria-label={`Level ${level} stats card for ${state.playerName || "Player 1"}, ${state.totalXp} total XP`}
+          aria-label={`Level ${level} stats card for ${playerName(state, store.user)}, ${state.totalXp} total XP`}
         />
       </div>
       <div className="form-actions">

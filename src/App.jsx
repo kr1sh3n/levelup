@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import confetti from "canvas-confetti";
 import "./App.css";
 import AuthGate from "./AuthGate";
-import { deleteMyAccount } from "./cloud";
+import { deleteMyAccount, saveDisplayName } from "./cloud";
 import { useGameStore } from "./useGameStore";
 import MealsTab from "./MealsTab";
 import GymTab from "./GymTab";
@@ -10,7 +10,7 @@ import PixelIcon from "./PixelIcon";
 import {
   getLevel,
   getXpInCurrentLevel,
-  getLevelTitle,
+  getLevelTitle, playerName,
   getStreakMultiplier,
   SKILL_COLORS,
   SKILL_LABELS,
@@ -211,8 +211,8 @@ function GoalItem({ goal, today, multiplier, store, editing, onEdit, onCancelEdi
 
 function WorkoutCard({ store, setTab }) {
   const { activeDay, activeLog, state } = store;
-  let label = "No plan yet";
-  let sub = "Create your workout plan in the Gym tab →";
+  let label = "Get started";
+  let sub = "Tap to pick a ready-made plan →";
   let done = false;
   if (state.workoutPlan.days.length) {
     if (!activeDay) {
@@ -244,7 +244,7 @@ function WorkoutCard({ store, setTab }) {
         <div className="task-label">Workout · {label}</div>
         <div className="task-xp">{sub}</div>
       </div>
-      <div className="task-check">{done ? "✓" : ""}</div>
+      <div className={`task-check ${done ? "" : "go"}`} aria-hidden="true">{done ? "✓" : "›"}</div>
     </div>
   );
 }
@@ -409,7 +409,7 @@ const SYNC_LABEL = {
 };
 
 function displayName(store) {
-  return store.state.profileName || store.user?.email?.split("@")[0]?.toUpperCase() || "PLAYER 1";
+  return playerName(store.state, store.user);
 }
 
 function ProfileTab({ store, setTab }) {
@@ -459,29 +459,30 @@ function ProfileTab({ store, setTab }) {
           onSubmit={(e) => {
             e.preventDefault();
             store.setProfileName(nameDraft);
+            // Keep the operator's view in step; the app works the same if this fails.
+            if (store.user) saveDisplayName(store.user.id, nameDraft.trim()).catch(() => {});
             setEditingName(false);
           }}
         >
-          <input className="meal-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={24} autoFocus placeholder="Player name" />
+          <input className="meal-input" value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} maxLength={24} autoFocus placeholder="Your name" aria-label="Your name" />
           <div className="form-actions">
             <button type="submit" className="claim-btn">SAVE</button>
             <button type="button" className="claim-btn ghost" onClick={() => setEditingName(false)}>CANCEL</button>
           </div>
         </form>
       ) : (
-        <div className="profile-name">
-          {displayName(store)}{" "}
+        <>
+          <div className="profile-name">{displayName(store)}</div>
           <button
-            className="icon-btn inline"
-            onClick={() => { setNameDraft(state.profileName || displayName(store)); setEditingName(true); }}
-            aria-label="Edit player name"
-            title="Edit name"
+            type="button"
+            className="claim-btn ghost small-btn name-edit-btn"
+            onClick={() => { setNameDraft(state.profileName || ""); setEditingName(true); }}
           >
-            ✎
+            {state.profileName?.trim() ? "✎ EDIT NAME" : "✎ SET YOUR NAME"}
           </button>
-        </div>
+        </>
       )}
-      <div className="profile-title">PLAYER 1 · LVL {level} · {getLevelTitle(level)}</div>
+      <div className="profile-title">LVL {level} · {getLevelTitle(level)}</div>
 
       {cloud && (
         <div className="card">

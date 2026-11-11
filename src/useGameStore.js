@@ -104,7 +104,7 @@ function applyDaily(prev) {
   return { state: next, bonus };
 }
 
-const num = (v) => Math.max(0, Number(v) || 0);
+const num = (v) => Math.max(0, Number(String(v ?? "").trim().replace(",", ".")) || 0);
 const moveItem = (list, id, dir) => {
   const i = list.findIndex((x) => x.id === id);
   const j = i + dir;
@@ -122,7 +122,6 @@ const exerciseFields = (ex) => ({
   name: ex.name.trim(),
   sets: Math.min(20, num(ex.sets)) || 3,
   reps: String(ex.reps || "").trim(),
-  targetWeight: ex.targetWeight === "" || ex.targetWeight == null ? "" : num(ex.targetWeight),
   restSec: Math.min(900, num(ex.restSec)),
   notes: (ex.notes || "").trim(),
 });
@@ -478,6 +477,22 @@ export function useGameStore(user) {
 
   // Empties the plan; completed workout history and PRs stay. Today's
   // unfinished session belongs to a day that no longer exists, so drop it.
+  const applyTemplate = useCallback(
+    (days) =>
+      commit((prev) => ({
+        next: setDays(prev, [
+          ...prev.workoutPlan.days,
+          ...days.map((d) => ({
+            id: uid(),
+            name: d.name,
+            weekdays: [],
+            exercises: d.exercises.map((ex) => ({ id: uid(), ...exerciseFields(ex) })),
+          })),
+        ]),
+      })),
+    [commit]
+  );
+
   const clearPlan = useCallback(
     () =>
       commit((prev) => {
@@ -870,6 +885,7 @@ export function useGameStore(user) {
     claimBossDay,
 
     addDay,
+    applyTemplate,
     updateDay,
     deleteDay,
     clearPlan,

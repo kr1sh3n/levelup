@@ -9,6 +9,16 @@ export const LEVEL_TITLES = {
 
 export const XP_PER_LEVEL = 2000;
 
+// The name shown everywhere: what the player typed in Profile, else the part
+// of their email before the @, else a placeholder. The card used to read a
+// field nothing ever wrote, so it always said "Player 1".
+export function playerName(state, user) {
+  const typed = state?.profileName?.trim();
+  if (typed) return typed;
+  const fromEmail = user?.email?.split("@")[0];
+  return fromEmail ? fromEmail.toUpperCase() : "PLAYER 1";
+}
+
 export function getLevelTitle(level) {
   const milestones = [30, 20, 15, 10, 5, 1];
   for (const m of milestones) {

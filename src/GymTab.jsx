@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { WEEKDAY_SHORT, LIFT_XP, getStreakMultiplier } from "./gameData";
 import { THEMES, themeOf } from "./themes";
+import { LIBRARY } from "./muscles/exercises";
+import { DEFAULT_REPS, DEFAULT_REST, REST_OPTIONS, TEMPLATES, restLabel } from "./templates";
+
+// Offered as suggestions while typing an exercise name. Picking one of these
+// also means the muscle map knows which muscles it works.
+const LIBRARY_NAMES = [...new Set(LIBRARY.map((e) => e.name))].sort((a, b) => a.localeCompare(b));
 
 // ── Rest timer ────────────────────────────────────────────────────────────────
 function beep() {
@@ -24,18 +30,23 @@ function beep() {
   }
 }
 
-const PRESETS = [60, 90, 120, 180];
-
 function fmt(s) {
   const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+// Rest lengths for a select: the standard 2-5 minutes, plus whatever an older
+// exercise was saved with so it is not silently changed.
+function restChoices(current) {
+  const n = Number(current);
+  return REST_OPTIONS.includes(n) || !n ? REST_OPTIONS : [...REST_OPTIONS, n].sort((a, b) => a - b);
+}
+
 // `signal` changes ({ n, sec }) each time a set is logged → auto-start with that exercise's rest.
 function RestTimer({ signal }) {
-  const [duration, setDuration] = useState(90);
-  const [timeLeft, setTimeLeft] = useState(90);
+  const [duration, setDuration] = useState(DEFAULT_REST);
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_REST);
   const [running, setRunning] = useState(false);
   const [justDone, setJustDone] = useState(false);
   const durationRef = useRef(duration);
@@ -73,7 +84,7 @@ function RestTimer({ signal }) {
     return () => clearInterval(id);
   }, [running]);
 
-  function pickPreset(sec) {
+  function pickLength(sec) {
     setDuration(sec);
     setTimeLeft(sec);
     setRunning(false);
@@ -85,16 +96,17 @@ function RestTimer({ signal }) {
   }
   function reset() { setRunning(false); setTimeLeft(duration); setJustDone(false); }
 
+  // One compact row: the timer used to fill the screen above the exercises.
   return (
-    <div className={`card rest-timer ${running ? "ticking" : ""} ${justDone ? "done" : ""}`}>
-      <div className="card-title">Rest Timer</div>
-      <div className="rest-display">{justDone ? "DONE!" : fmt(timeLeft)}</div>
-      <div className="rest-presets">
-        {PRESETS.map((p) => (
-          <button key={p} className={`rest-preset ${duration === p ? "active" : ""}`} onClick={() => pickPreset(p)}>
-            {fmt(p)}
-          </button>
-        ))}
+    <div className={`card rest-timer compact ${running ? "ticking" : ""} ${justDone ? "done" : ""}`}>
+      <div className="rest-row">
+        <div className="rest-label">Rest</div>
+        <div className="rest-display">{justDone ? "DONE!" : fmt(timeLeft)}</div>
+        <select className="meal-input rest-select" value={duration} onChange={(e) => pickLength(Number(e.target.value))} aria-label="Rest length">
+          {restChoices(duration).map((p) => (
+            <option key={p} value={p}>{restLabel(p)}</option>
+          ))}
+        </select>
       </div>
       <div className="rest-controls">
         <button className="rest-btn primary" onClick={toggle}>
@@ -110,13 +122,12 @@ function RestTimer({ signal }) {
 function targetLine(ex) {
   const parts = [`${ex.sets} sets`];
   if (ex.reps) parts.push(`${ex.reps} reps`);
-  if (ex.targetWeight !== "" && ex.targetWeight != null) parts.push(`${ex.targetWeight} kg`);
-  if (ex.restSec) parts.push(`rest ${fmt(ex.restSec)}`);
+  if (ex.restSec) parts.push(`rest ${restLabel(ex.restSec)}`);
   return parts.join(" · ");
 }
 
 function weekdaysLabel(weekdays) {
-  if (!weekdays?.length) return "Not scheduled";
+  if (!weekdays?.length) return "Any day";
   if (weekdays.length === 7) return "Every day";
   return [...weekdays].sort().map((d) => WEEKDAY_SHORT[d]).join(", ");
 }
@@ -126,12 +137,14 @@ const fmtShortDate = (key) => {
   return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 };
 
+const weightText = (w) => (Number(w) > 0 ? `${w} kg` : "Bodyweight");
+
 // ── Today's session ──────────────────────────────────────────────────────────
 function SetRow({ set, index, onDelete, locked }) {
   return (
     <div className="set-row">
       <span className="set-num">Set {index + 1}</span>
-      <span className="set-vol">{set.weight} kg × {set.reps}</span>
+      <span className="set-vol">{weightText(set.weight)} × {set.reps}</span>
       {set.rir != null && <span className="rir-tag">RIR {set.rir}</span>}
       {set.pr && <span className="pr-tag">PR</span>}
       {set.warmup && <span className="pr-tag warm-tag">WARM-UP</span>}
@@ -144,18 +157,34 @@ function SetRow({ set, index, onDelete, locked }) {
 
 function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
   const { addSet, deleteSet, toggleExerciseDone, lastSessionFor } = store;
-  const [weight, setWeight] = useState("");
-  const [reps, setReps] = useState("");
-  const [warmup, setWarmup] = useState(false);
-  const [rir, setRir] = useState("");
   const locked = !!log?.completedAt;
   const exLog = log?.ex[ex.id] || { sets: [], done: false };
   const last = lastSessionFor(ex.id);
+  // Start from the weight used last time as a real, editable value. A grey
+  // placeholder that looks filled in is exactly how blank sets were being
+  // saved as 0 kg.
+  const startWeight = exLog.sets.filter((s) => !s.warmup).at(-1)?.weight ?? last?.weight;
+  const [weight, setWeight] = useState(startWeight > 0 ? String(startWeight) : "");
+  const [reps, setReps] = useState("");
+  const [more, setMore] = useState(false);
+  const [warmup, setWarmup] = useState(false);
+  const [rir, setRir] = useState("");
+  const [err, setErr] = useState(null);
+  const working = exLog.sets.filter((s) => !s.warmup).length;
 
   function submit(e) {
     e.preventDefault();
-    if (!reps || Number(reps) <= 0) return;
-    addSet(day.id, ex, weight, reps, { warmup, rir });
+    const w = weight.trim().replace(",", ".");
+    if (w === "" || Number.isNaN(Number(w)) || Number(w) < 0) {
+      setErr("Enter the weight you lifted (0 for bodyweight).");
+      return;
+    }
+    if (!reps || !(Number(reps) > 0)) {
+      setErr("Enter how many reps you did.");
+      return;
+    }
+    setErr(null);
+    addSet(day.id, ex, w, reps, { warmup, rir });
     setReps("");
     setWarmup(false);
     setRir("");
@@ -171,18 +200,19 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
           {ex.notes && <div className="exercise-cue">{ex.notes}</div>}
         </div>
         <button
-          className={`done-check ${exLog.done ? "on" : ""}`}
+          className={`done-pill ${exLog.done ? "on" : ""}`}
           onClick={() => toggleExerciseDone(day.id, ex.id)}
           disabled={locked}
-          aria-label={exLog.done ? `Unmark ${ex.name}` : `Mark ${ex.name} done`}
-          title="Mark exercise done"
+          aria-pressed={exLog.done}
         >
-          {exLog.done ? "✓" : ""}
+          {exLog.done ? "✓ DONE" : "MARK DONE"}
         </button>
       </div>
 
       <div className="exercise-last">
-        {last ? `Last: ${last.weight}kg × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})` : "No history yet — set a baseline!"}
+        {last
+          ? `Last time: ${weightText(last.weight)} × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})`
+          : `First time: pick a weight you can lift for ${ex.reps || DEFAULT_REPS} good reps.`}
       </div>
 
       {exLog.sets.map((s, i) => (
@@ -190,57 +220,72 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
       ))}
 
       {!locked && (
-        <form className="set-form" onSubmit={submit}>
-          <input
-            className="meal-input small"
-            type="number"
-            inputMode="decimal"
-            min="0"
-            step="0.5"
-            placeholder={ex.targetWeight !== "" && ex.targetWeight != null ? `${ex.targetWeight} kg` : "kg"}
-            value={weight}
-            onChange={(e) => setWeight(e.target.value)}
-            aria-label={`${ex.name} weight in kg`}
-          />
-          <span className="set-x">×</span>
-          <input
-            className="meal-input small"
-            type="number"
-            inputMode="numeric"
-            min="1"
-            placeholder="reps"
-            value={reps}
-            onChange={(e) => setReps(e.target.value)}
-            aria-label={`${ex.name} reps`}
-          />
-          {!warmup && (
-            <select
-              className="rir-select"
-              value={rir}
-              onChange={(e) => setRir(e.target.value)}
-              aria-label={`${ex.name} reps in reserve`}
-              title="Reps in reserve: how many more reps you could have done"
-            >
-              <option value="">RIR</option>
-              <option value="0">0 — failure</option>
-              <option value="1">1 left</option>
-              <option value="2">2 left</option>
-              <option value="3">3 left</option>
-              <option value="4">4 left</option>
-              <option value="5">5+ left</option>
-            </select>
+        <>
+          <div className="set-next">
+            {working < (Number(ex.sets) || 0) ? `Set ${working + 1} of ${ex.sets}` : "All planned sets logged — add more if you like"}
+          </div>
+          <form className="set-form" onSubmit={submit} noValidate>
+            <label className="set-field">
+              <span>kg</span>
+              <input
+                className="meal-input small"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="e.g. 20"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                aria-label={`${ex.name} weight in kg`}
+              />
+            </label>
+            <span className="set-x">×</span>
+            <label className="set-field">
+              <span>reps</span>
+              <input
+                className="meal-input small"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                placeholder="e.g. 8"
+                value={reps}
+                onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))}
+                aria-label={`${ex.name} reps`}
+              />
+            </label>
+            <button type="submit" className="add-set-btn">+ SET</button>
+          </form>
+          {err && <div className="form-msg err">{err}</div>}
+
+          {more && (
+            <div className="set-extras">
+              <select
+                className="meal-input rir-select"
+                value={rir}
+                onChange={(e) => setRir(e.target.value)}
+                aria-label={`${ex.name} reps in reserve`}
+              >
+                <option value="">Reps left in the tank?</option>
+                <option value="0">0 — couldn&apos;t do another</option>
+                <option value="1">1 more</option>
+                <option value="2">2 more</option>
+                <option value="3">3 more</option>
+                <option value="4">4 more</option>
+                <option value="5">5 or more</option>
+              </select>
+              <button
+                type="button"
+                className={`warmup-toggle wide ${warmup ? "on" : ""}`}
+                onClick={() => setWarmup(!warmup)}
+                aria-pressed={warmup}
+              >
+                {warmup ? "✓ WARM-UP SET" : "WARM-UP SET"}
+              </button>
+            </div>
           )}
-          <button
-            type="button"
-            className={`warmup-toggle ${warmup ? "on" : ""}`}
-            onClick={() => setWarmup(!warmup)}
-            aria-pressed={warmup}
-            title="Warm-up sets are saved but don't count towards your muscle map"
-          >
-            W
+          <button type="button" className="link-btn more-link" onClick={() => setMore(!more)} aria-expanded={more}>
+            {more ? "Fewer options" : "More options: warm-up, reps left"}
           </button>
-          <button type="submit" className="add-set-btn">+ SET</button>
-        </form>
+        </>
       )}
     </div>
   );
@@ -257,56 +302,66 @@ function SessionCard({ store }) {
   const xp = Math.round(LIFT_XP * getStreakMultiplier(state.streak));
   const earnedToday = state.workoutXpDates.includes(store.today);
 
-  function changeDay(e) {
-    const id = e.target.value || null;
+  function pick(id) {
     if (hasProgress && !window.confirm("Switching workouts clears the sets you've logged today. Continue?")) return;
     selectWorkoutDay(id);
   }
 
   const { gymImage, pixelArt } = THEMES[themeOf(state.theme)];
 
+  // Nothing started yet: one big button per workout, instead of a dropdown
+  // labelled "No workout today" that nobody recognised as the way in.
+  if (!activeDay) {
+    const ordered = scheduledDay ? [scheduledDay, ...days.filter((d) => d.id !== scheduledDay.id)] : days;
+    return (
+      <div className={`card ${gymImage ? "session-with-art" : ""}`}>
+        {gymImage && <img className={`session-art ${pixelArt ? "pixel-art wide" : ""}`} src={gymImage} alt="" />}
+        <div className="card-title">Today&apos;s Session</div>
+        <div className="workout-type">Start a workout</div>
+        <div className="start-list">
+          {ordered.map((d) => (
+            <button key={d.id} type="button" className="start-day-btn" onClick={() => pick(d.id)}>
+              <span className="start-day-name">{d.name}</span>
+              <span className="start-day-meta">
+                {d.exercises.length} exercise{d.exercises.length === 1 ? "" : "s"}
+                {scheduledDay?.id === d.id ? " · scheduled today" : ""}
+              </span>
+              <span className="start-day-go">START ▶</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`card ${gymImage ? "session-with-art" : ""}`}>
       {gymImage && <img className={`session-art ${pixelArt ? "pixel-art wide" : ""}`} src={gymImage} alt="" />}
       <div className="card-title">Today&apos;s Session</div>
-      <div className="workout-type">
-        {activeDay ? activeDay.name : days.some((d) => d.weekdays?.length) ? "Rest Day" : "Pick a Workout"}
-      </div>
-      {scheduledDay && activeDay?.id !== scheduledDay.id && (
-        <div className="exercise-last">Scheduled today: {scheduledDay.name}</div>
-      )}
-      {activeDay && total > 0 && (
+      <div className="workout-type">{activeDay.name}</div>
+      {total > 0 && (
         <div className={`lift-progress-text ${done ? "complete" : ""}`}>
           {done ? `✓ Workout complete — ${setCount} sets logged` : `${doneCount} / ${total} exercises done · ${setCount} sets`}
         </div>
       )}
 
-      {!done && (
-        <label className="field session-picker">
-          <span>Train today</span>
-          <select className="meal-input" value={activeDay?.id || ""} onChange={changeDay}>
-            <option value="">No workout today</option>
-            {days.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-        </label>
-      )}
-
-      {activeDay && total > 0 && !done && (
+      {total > 0 && !done && (
         <button className="claim-btn" disabled={!hasProgress} onClick={() => finishWorkout(activeDay.id)}>
           {hasProgress ? (earnedToday ? "FINISH WORKOUT" : `FINISH WORKOUT (+${xp} XP)`) : "LOG A SET TO FINISH"}
         </button>
       )}
-      {done && (
-        <button className="claim-btn ghost" onClick={reopenWorkout}>REOPEN TO EDIT</button>
+      {done && <button className="claim-btn ghost" onClick={reopenWorkout}>REOPEN TO EDIT</button>}
+      {!done && (
+        <button type="button" className="claim-btn ghost small-btn" onClick={() => pick(null)}>
+          ← SWITCH WORKOUT
+        </button>
       )}
     </div>
   );
 }
 
 // ── Plan builder ─────────────────────────────────────────────────────────────
-const BLANK_EX = { name: "", sets: 3, reps: "8-12", targetWeight: "", restSec: 90, notes: "" };
+const BLANK_EX = { name: "", sets: 3, reps: DEFAULT_REPS, restSec: DEFAULT_REST, notes: "" };
 
 function ExerciseForm({ initial = BLANK_EX, submitLabel, onSubmit, onCancel }) {
   const [form, setForm] = useState(initial);
@@ -320,26 +375,35 @@ function ExerciseForm({ initial = BLANK_EX, submitLabel, onSubmit, onCancel }) {
 
   return (
     <form className="builder-form edit-form inset" onSubmit={submit}>
-      <input className="meal-input" placeholder="Exercise name *" value={form.name} onChange={set("name")} maxLength={60} autoFocus required />
-      <div className="form-grid four">
+      <input
+        className="meal-input"
+        list="exercise-library"
+        placeholder="Exercise — start typing, e.g. Bench Press"
+        value={form.name}
+        onChange={set("name")}
+        maxLength={60}
+        autoFocus
+        required
+      />
+      <div className="form-grid three">
         <label className="field">
           <span>Sets</span>
           <input className="meal-input" type="number" inputMode="numeric" min="1" max="20" value={form.sets} onChange={set("sets")} />
         </label>
         <label className="field">
           <span>Reps</span>
-          <input className="meal-input" placeholder="8-12" value={form.reps} onChange={set("reps")} maxLength={12} />
+          <input className="meal-input" placeholder={DEFAULT_REPS} value={form.reps} onChange={set("reps")} maxLength={12} />
         </label>
         <label className="field">
-          <span>Target kg</span>
-          <input className="meal-input" type="number" inputMode="decimal" min="0" step="0.5" placeholder="—" value={form.targetWeight} onChange={set("targetWeight")} />
-        </label>
-        <label className="field">
-          <span>Rest (s)</span>
-          <input className="meal-input" type="number" inputMode="numeric" min="0" max="900" step="15" value={form.restSec} onChange={set("restSec")} />
+          <span>Rest</span>
+          <select className="meal-input" value={form.restSec} onChange={(e) => setForm({ ...form, restSec: Number(e.target.value) })}>
+            {restChoices(form.restSec).map((s) => (
+              <option key={s} value={s}>{restLabel(s)}</option>
+            ))}
+          </select>
         </label>
       </div>
-      <input className="meal-input" placeholder="Notes (form cues, tempo, machine settings…)" value={form.notes} onChange={set("notes")} maxLength={200} />
+      <input className="meal-input" placeholder="Notes (optional)" value={form.notes} onChange={set("notes")} maxLength={200} />
       <div className="form-actions">
         <button type="submit" className="claim-btn">{submitLabel}</button>
         <button type="button" className="claim-btn ghost" onClick={onCancel}>CANCEL</button>
@@ -351,7 +415,7 @@ function ExerciseForm({ initial = BLANK_EX, submitLabel, onSubmit, onCancel }) {
 function DayEditor({ day, store, onClose }) {
   const { updateDay, addExercise, updateExercise, deleteExercise, moveExercise } = store;
   const [name, setName] = useState(day.name);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(day.exercises.length === 0);
   const [editingId, setEditingId] = useState(null);
   const otherDays = store.state.workoutPlan.days.filter((d) => d.id !== day.id);
 
@@ -369,11 +433,54 @@ function DayEditor({ day, store, onClose }) {
           if (name.trim()) updateDay(day.id, { name: name.trim() });
         }}
       >
-        <input className="meal-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Workout day name" />
+        <input className="meal-input" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} aria-label="Workout name" />
         <button type="submit" className="add-set-btn" disabled={!name.trim() || name.trim() === day.name}>RENAME</button>
       </form>
 
-      <div className="day1-label">Scheduled on (optional — leave empty to train it whenever you like)</div>
+      <div className="day1-label">Exercises</div>
+      {day.exercises.map((ex, idx) =>
+        editingId === ex.id ? (
+          <ExerciseForm
+            key={ex.id}
+            initial={{ ...ex, restSec: ex.restSec || DEFAULT_REST }}
+            submitLabel="SAVE"
+            onSubmit={(f) => { updateExercise(day.id, ex.id, f); setEditingId(null); }}
+            onCancel={() => setEditingId(null)}
+          />
+        ) : (
+          <div key={ex.id} className="builder-row">
+            <div className="builder-arrows">
+              <button onClick={() => moveExercise(day.id, ex.id, -1)} disabled={idx === 0} aria-label={`Move ${ex.name} up`}>▲</button>
+              <button onClick={() => moveExercise(day.id, ex.id, 1)} disabled={idx === day.exercises.length - 1} aria-label={`Move ${ex.name} down`}>▼</button>
+            </div>
+            <div className="builder-main">
+              <div className="builder-name">{ex.name}</div>
+              <div className="builder-meta">{targetLine(ex)}</div>
+              {ex.notes && <div className="builder-meta notes">{ex.notes}</div>}
+            </div>
+            <button className="mini-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`}>EDIT</button>
+            <button
+              className="del-btn small"
+              onClick={() => window.confirm(`Remove "${ex.name}" from this workout?`) && deleteExercise(day.id, ex.id)}
+              aria-label={`Remove ${ex.name}`}
+            >
+              ×
+            </button>
+          </div>
+        )
+      )}
+
+      {adding ? (
+        <ExerciseForm
+          submitLabel="ADD EXERCISE"
+          onSubmit={(f) => { addExercise(day.id, f); setAdding(false); }}
+          onCancel={() => setAdding(false)}
+        />
+      ) : (
+        <button className="claim-btn ghost" onClick={() => { setAdding(true); setEditingId(null); }}>+ ADD EXERCISE</button>
+      )}
+
+      <div className="day1-label">Which days? (optional — leave empty to train it any day)</div>
       <div className="day1-btns">
         {WEEKDAY_SHORT.map((d, i) => {
           const clash = otherDays.find((o) => o.weekdays.includes(i));
@@ -391,51 +498,21 @@ function DayEditor({ day, store, onClose }) {
         })}
       </div>
 
-      <div className="day1-label">Exercises</div>
-      {day.exercises.length === 0 && !adding && <div className="builder-empty">No exercises yet — add your first one.</div>}
-      {day.exercises.map((ex, idx) =>
-        editingId === ex.id ? (
-          <ExerciseForm
-            key={ex.id}
-            initial={{ ...ex, targetWeight: ex.targetWeight ?? "" }}
-            submitLabel="SAVE EXERCISE"
-            onSubmit={(f) => { updateExercise(day.id, ex.id, f); setEditingId(null); }}
-            onCancel={() => setEditingId(null)}
-          />
-        ) : (
-          <div key={ex.id} className="builder-row">
-            <div className="builder-arrows">
-              <button onClick={() => moveExercise(day.id, ex.id, -1)} disabled={idx === 0} aria-label={`Move ${ex.name} up`}>▲</button>
-              <button onClick={() => moveExercise(day.id, ex.id, 1)} disabled={idx === day.exercises.length - 1} aria-label={`Move ${ex.name} down`}>▼</button>
-            </div>
-            <div className="builder-main">
-              <div className="builder-name">{ex.name}</div>
-              <div className="builder-meta">{targetLine(ex)}</div>
-              {ex.notes && <div className="builder-meta notes">{ex.notes}</div>}
-            </div>
-            <button className="icon-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`} title="Edit">✎</button>
-            <button
-              className="del-btn small"
-              onClick={() => window.confirm(`Delete "${ex.name}"?`) && deleteExercise(day.id, ex.id)}
-              aria-label={`Delete ${ex.name}`}
-              title="Delete"
-            >
-              ×
-            </button>
-          </div>
-        )
-      )}
+      <button className="claim-btn done-btn" onClick={onClose}>✓ DONE EDITING</button>
+    </div>
+  );
+}
 
-      {adding ? (
-        <ExerciseForm
-          submitLabel="ADD EXERCISE"
-          onSubmit={(f) => { addExercise(day.id, f); setAdding(false); }}
-          onCancel={() => setAdding(false)}
-        />
-      ) : (
-        <button className="claim-btn ghost" onClick={() => { setAdding(true); setEditingId(null); }}>+ ADD EXERCISE</button>
-      )}
-      <button className="link-btn done-link" onClick={onClose}>Done editing {day.name}</button>
+function StarterPlans({ store }) {
+  return (
+    <div className="starter-list">
+      {TEMPLATES.map((t) => (
+        <button key={t.id} type="button" className="starter-btn" onClick={() => store.applyTemplate(t.days)}>
+          <span className="starter-name">{t.name}</span>
+          <span className="starter-blurb">{t.blurb}</span>
+          <span className="starter-days">{t.days.map((d) => d.name).join(" · ")}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -445,6 +522,7 @@ function PlanBuilder({ store }) {
   const days = state.workoutPlan.days;
   const [openId, setOpenId] = useState(null);
   const [newDay, setNewDay] = useState("");
+  const [showCustom, setShowCustom] = useState(false);
 
   function add(name) {
     if (!name.trim()) return;
@@ -452,15 +530,40 @@ function PlanBuilder({ store }) {
     setNewDay("");
   }
 
+  const newDayForm = (
+    <form className="rename-row" onSubmit={(e) => { e.preventDefault(); add(newDay); }}>
+      <input
+        className="meal-input"
+        placeholder={days.length ? "Name a new workout, e.g. Arms" : "Name your workout, e.g. Chest day"}
+        value={newDay}
+        onChange={(e) => setNewDay(e.target.value)}
+        maxLength={40}
+        aria-label="New workout name"
+      />
+      <button type="submit" className="add-set-btn" disabled={!newDay.trim()}>+ ADD</button>
+    </form>
+  );
+
+  // First visit: a ready-made plan is one tap away. Building your own is still
+  // there, one step back, for people who know what they want.
+  if (days.length === 0) {
+    return (
+      <div className="card">
+        <div className="card-title">Choose a plan</div>
+        <div className="builder-empty">New to lifting? Pick a starter plan — you can change any of it later.</div>
+        <StarterPlans store={store} />
+        {showCustom ? (
+          newDayForm
+        ) : (
+          <button type="button" className="claim-btn ghost" onClick={() => setShowCustom(true)}>OR BUILD MY OWN</button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="card">
-      <div className="card-title">My Workout Plan</div>
-      {days.length === 0 && (
-        <div className="builder-empty">
-          Your plan, your rules. Add as many workout days as you like, name them anything, fill them with
-          your own exercises, and optionally pin them to weekdays — or just pick one whenever you train.
-        </div>
-      )}
+      <div className="card-title">My Workouts</div>
 
       {days.map((day, idx) => (
         <div key={day.id} className={`day-block ${openId === day.id ? "open" : ""}`}>
@@ -475,8 +578,12 @@ function PlanBuilder({ store }) {
                 {day.exercises.length} exercise{day.exercises.length === 1 ? "" : "s"} · {weekdaysLabel(day.weekdays)}
               </div>
             </button>
-            <button className="icon-btn" onClick={() => setOpenId(openId === day.id ? null : day.id)} aria-label={`Edit ${day.name}`} title="Edit">
-              {openId === day.id ? "▾" : "✎"}
+            <button
+              className={`mini-btn ${openId === day.id ? "on" : ""}`}
+              onClick={() => setOpenId(openId === day.id ? null : day.id)}
+              aria-expanded={openId === day.id}
+            >
+              {openId === day.id ? "CLOSE" : "EDIT"}
             </button>
             <button
               className="del-btn small"
@@ -485,7 +592,6 @@ function PlanBuilder({ store }) {
                 deleteDay(day.id)
               }
               aria-label={`Delete ${day.name}`}
-              title="Delete"
             >
               ×
             </button>
@@ -494,29 +600,18 @@ function PlanBuilder({ store }) {
         </div>
       ))}
 
-      <form className="rename-row" onSubmit={(e) => { e.preventDefault(); add(newDay); }}>
-        <input
-          className="meal-input"
-          placeholder={days.length ? "Add another workout day" : "Name your first workout day"}
-          value={newDay}
-          onChange={(e) => setNewDay(e.target.value)}
-          maxLength={40}
-          aria-label="New workout day name"
-        />
-        <button type="submit" className="add-set-btn" disabled={!newDay.trim()}>+ DAY</button>
-      </form>
-      {days.length > 0 && (
-        <button
-          className="link-btn done-link"
-          onClick={() =>
-            window.confirm(
-              `Clear your whole plan (${days.length} workout day${days.length === 1 ? "" : "s"}) and start from scratch? Workout history and PRs are kept.`
-            ) && clearPlan()
-          }
-        >
-          Clear plan &amp; start from scratch
-        </button>
-      )}
+      {newDayForm}
+
+      <button
+        className="claim-btn ghost small-btn subtle-danger"
+        onClick={() =>
+          window.confirm(
+            `Delete all ${days.length} workout${days.length === 1 ? "" : "s"} and start over? Your history and PRs are kept.`
+          ) && clearPlan()
+        }
+      >
+        START OVER
+      </button>
     </div>
   );
 }
@@ -551,15 +646,19 @@ function WorkoutHistory({ state }) {
 export default function GymTab({ store }) {
   const { state, activeDay, activeLog } = store;
   const [restSignal, setRestSignal] = useState({ n: 0, sec: 0 });
-  const prList = Object.values(state.prs).sort((a, b) => b.maxWeight - a.maxWeight);
+  const prList = Object.values(state.prs).filter((p) => p.maxWeight > 0).sort((a, b) => b.maxWeight - a.maxWeight);
 
   return (
     <div className="page">
+      <datalist id="exercise-library">
+        {LIBRARY_NAMES.map((n) => <option key={n} value={n} />)}
+      </datalist>
+
       {state.workoutPlan.days.length > 0 && <SessionCard store={store} />}
 
       {activeDay && activeDay.exercises.length === 0 && (
         <div className="card builder-empty big">
-          <strong>{activeDay.name}</strong> has no exercises yet. Add some in the plan below.
+          <strong>{activeDay.name}</strong> has no exercises yet. Tap EDIT on it below to add some.
         </div>
       )}
 

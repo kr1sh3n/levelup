@@ -5,7 +5,7 @@
 // so the card matches whichever theme is active without a second palette to
 // keep in sync. Drawing happens at CARD_SCALE so the saved PNG stays sharp.
 
-import { LEVEL_TITLES, SKILL_COLORS, SKILL_LABELS, XP_PER_LEVEL, getLevelTitle } from "./gameData";
+import { LEVEL_TITLES, SKILL_COLORS, SKILL_LABELS, XP_PER_LEVEL, getLevelTitle, playerName } from "./gameData";
 
 export const CARD_W = 640;
 export const CARD_H = 896; // 5:7, the usual trading-card proportion
@@ -264,9 +264,9 @@ export async function renderCard(canvas, data, theme) {
 }
 
 // Snapshot of the game state the card shows.
-export function cardData(state, level, xpInLevel, extra = {}) {
+export function cardData(state, level, xpInLevel, extra = {}, user = null) {
   return {
-    name: (state.playerName || "Player 1").slice(0, 16),
+    name: playerName(state, user).slice(0, 16),
     level,
     title: getLevelTitle(level) || LEVEL_TITLES[1] || "Rookie",
     totalXp: state.totalXp || 0,

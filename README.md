@@ -5,7 +5,8 @@ Turn your own goals, workouts, diet and challenges into a role-playing game. You
 ## Features
 
 - **Personal goals (Today)** — create goals with a title, description, deadline and skill; edit, delete, and tick them off for XP. Due-today / overdue badges, active vs completed views.
-- **Custom workout plans (Gym)** — build your own split (Push/Pull/Legs, Upper/Lower, anything), schedule each day on weekdays, and add exercises with sets, reps, target weight, rest time and notes. Add, edit, delete and reorder days and exercises.
+- **Workout plans (Gym)** — pick a one-tap starter plan (Full body, Upper / Lower, Push / Pull / Legs) or build your own. Exercises default to 3 sets of 6–8 reps with 2–5 min rest, and the name field suggests exercises from the muscle library. Tap START on a workout, enter the weight you actually lifted (commas like 27,5 work; the next set is prefilled), and the rest timer starts on its own.
+- **Muscle map** — one scrolling page with a live preview of the figure; tap it to open the full-screen 3D view, tap a muscle, then SEE DETAILS.
 - **Workout tracking** — pick today's workout, log sets (weight × reps), auto-start the rest timer with each exercise's rest time, detect personal records, finish the workout for XP, and browse workout history.
 - **Custom diet plans (Meals)** — create meals (Breakfast, Lunch, Snacks, Dinner or your own), add food items with quantity, calories, protein, carbs and fats, and log a whole meal in one tap. Daily calorie and macro totals are calculated automatically against editable targets; logged entries can be edited or removed.
 - **XP & levelling** — every 2000 XP is a level; skill trees (Fitness, Mind, Creator, Health); streak multipliers at 7/14/30 days; Sunday Boss Day bonus when every goal due that day is done.
