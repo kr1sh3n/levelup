@@ -10,6 +10,7 @@ import { DEFAULT_REPS, DEFAULT_REST } from "../templates";
 import { agoText, computeRecovery, readyList, recoveryText, restingList } from "./recovery";
 import { balanceChecks, describeGroup, focusList, overList, suggestExercises, targetBand } from "./insights";
 import { THEMES, themeOf } from "../themes";
+import { askConfirm } from "../confirm";
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const fmt = (n) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
@@ -681,7 +682,7 @@ export default function MuscleMapOverlay({ store, onClose, setTab }) {
                   <button
                     type="button"
                     className="mini-btn ghost"
-                    onClick={() => window.confirm("Remove all imported sets? Workouts you logged in Pdash stay.") && store.clearImportedSets()}
+                    onClick={async () => (await askConfirm("Remove all imported sets? Workouts you logged in Pdash stay.", { okLabel: "REMOVE" })) && store.clearImportedSets()}
                   >
                     Remove imported
                   </button>

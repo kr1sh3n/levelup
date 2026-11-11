@@ -3,6 +3,7 @@ import confetti from "canvas-confetti";
 import "./App.css";
 import AuthGate from "./AuthGate";
 import { deleteMyAccount, saveDisplayName } from "./cloud";
+import { ConfirmHost, askConfirm } from "./confirm";
 import { useGameStore } from "./useGameStore";
 import MealsTab from "./MealsTab";
 import GymTab from "./GymTab";
@@ -55,7 +56,7 @@ function byDeadline(a, b) {
 }
 
 function confirmDelete(what) {
-  return window.confirm(`Delete ${what}? This can't be undone.`);
+  return askConfirm(`Delete ${what}? This can't be undone.`, { okLabel: "DELETE" });
 }
 
 // ── Shared ───────────────────────────────────────────────────────────────────
@@ -198,7 +199,7 @@ function GoalItem({ goal, today, multiplier, store, editing, onEdit, onCancelEdi
         <button
           type="button"
           className="del-btn small"
-          onClick={() => confirmDelete(`"${goal.title}"`) && store.deleteGoal(goal.id)}
+          onClick={async () => (await confirmDelete(`"${goal.title}"`)) && store.deleteGoal(goal.id)}
           aria-label={`Delete "${goal.title}"`}
           title="Delete"
         >
@@ -437,10 +438,10 @@ function ProfileTab({ store, setTab }) {
     e.target.value = "";
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const parsed = JSON.parse(reader.result);
-        if (!window.confirm("Importing will REPLACE all current progress with the backup. Continue?")) return;
+        if (!(await askConfirm("Importing will REPLACE all current progress with the backup. Continue?", { okLabel: "REPLACE" }))) return;
         importData(parsed);
         flash("✓ Backup restored");
       } catch (err) {
@@ -594,7 +595,7 @@ function DangerZone() {
   const [err, setErr] = useState(null);
 
   async function remove() {
-    if (!window.confirm("Permanently delete your account, your training history and your login? This cannot be undone.")) return;
+    if (!(await askConfirm("Permanently delete your account, your training history and your login? This cannot be undone.", { okLabel: "DELETE FOREVER" }))) return;
     setBusy(true);
     setErr(null);
     try {
@@ -737,6 +738,7 @@ function Dashboard({ user }) {
 
   return (
     <div className="app">
+      <ConfirmHost />
       <Header store={store} />
 
       {tab === "today" && <TodayTab store={store} setTab={setTab} />}

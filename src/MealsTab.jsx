@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { askConfirm } from "./confirm";
 import { MEAL_NAME_SUGGESTIONS } from "./gameData";
 
 const MACROS = [
@@ -238,7 +239,7 @@ function FoodLog({ store, slotNames }) {
                   item={m}
                   where={`logged ${s}`}
                   onEdit={() => setEditingId(m.id)}
-                  onDelete={() => window.confirm(`Remove "${m.name}" from today's log?`) && deleteFood(m.id)}
+                  onDelete={async () => (await askConfirm(`Remove "${m.name}" from today's log?`, { okLabel: "REMOVE" })) && deleteFood(m.id)}
                 />
               )
             )}
@@ -283,7 +284,7 @@ function PlanMeal({ meal, idx, count, store, open, onToggle, loggedToday }) {
         <button className="icon-btn" onClick={onToggle} aria-label={`Edit ${meal.name}`} title="Edit">{open ? "▾" : "✎"}</button>
         <button
           className="del-btn small"
-          onClick={() => window.confirm(`Delete "${meal.name}" from your diet plan?`) && deletePlanMeal(meal.id)}
+          onClick={async () => (await askConfirm(`Delete "${meal.name}" from your diet plan?`, { okLabel: "DELETE" })) && deletePlanMeal(meal.id)}
           aria-label={`Delete ${meal.name}`}
           title="Delete"
         >
@@ -320,7 +321,7 @@ function PlanMeal({ meal, idx, count, store, open, onToggle, loggedToday }) {
                 item={item}
                 where={`${meal.name} plan`}
                 onEdit={() => { setEditingId(item.id); setAdding(false); }}
-                onDelete={() => window.confirm(`Remove "${item.name}"?`) && deletePlanItem(meal.id, item.id)}
+                onDelete={async () => (await askConfirm(`Remove "${item.name}"?`, { okLabel: "REMOVE" })) && deletePlanItem(meal.id, item.id)}
               />
             )
           )}

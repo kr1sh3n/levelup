@@ -2152,3 +2152,12 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .mm-full { z-index: 110; }
 /* "Wrong workout?" — only shown before the first set is logged. */
 .start-other { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; font-size: 16px; color: var(--text-muted); }
+
+/* In-app confirm box (replaces window.confirm, which some browsers block). */
+.confirm-backdrop {
+  position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(var(--shadow-rgb), 0.6);
+}
+.confirm-box { width: 100%; max-width: 360px; margin: 0; }
+.confirm-msg { margin: 0 0 14px; font-size: 19px; line-height: 1.35; color: var(--text); }
+.danger-btn { background: linear-gradient(135deg, #e5484d, #b4232a); border-color: #e5484d; }

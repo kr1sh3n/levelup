@@ -10,6 +10,7 @@ import {
 } from "./gameData";
 import { defaultState, migrate, todayStr, uid, looksLikeSave } from "./storage";
 import { supabase, fetchRemoteState, pushRemoteState } from "./cloud";
+import { askConfirm } from "./confirm";
 
 const LEGACY_KEY = "levelup_v1";
 
@@ -363,7 +364,7 @@ export function useGameStore(user) {
     await c.flush();
     if (
       c.unsynced() &&
-      !window.confirm("Some changes haven't synced yet (you seem to be offline). Sign out anyway and lose them?")
+      !(await askConfirm("Some changes haven't synced yet (you seem to be offline). Sign out anyway and lose them?", { okLabel: "SIGN OUT" }))
     ) {
       return;
     }

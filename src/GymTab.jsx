@@ -3,6 +3,7 @@ import { WEEKDAY_SHORT, LIFT_XP, getStreakMultiplier } from "./gameData";
 import { THEMES, themeOf } from "./themes";
 import { LIBRARY } from "./muscles/exercises";
 import { DEFAULT_REPS, DEFAULT_REST, REST_OPTIONS, TEMPLATES, restLabel } from "./templates";
+import { askConfirm } from "./confirm";
 
 // Offered as suggestions while typing an exercise name. Picking one of these
 // also means the muscle map knows which muscles it works.
@@ -437,7 +438,7 @@ function DayEditor({ day, store, onClose }) {
             <button className="mini-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`}>EDIT</button>
             <button
               className="del-btn small"
-              onClick={() => window.confirm(`Remove "${ex.name}" from this workout?`) && deleteExercise(day.id, ex.id)}
+              onClick={async () => (await askConfirm(`Remove "${ex.name}" from this workout?`, { okLabel: "REMOVE" })) && deleteExercise(day.id, ex.id)}
               aria-label={`Remove ${ex.name}`}
             >
               ×
@@ -563,9 +564,11 @@ function PlanBuilder({ store }) {
             </button>
             <button
               className="del-btn small"
-              onClick={() =>
-                window.confirm(`Delete "${day.name}" and its ${day.exercises.length} exercises? Past workout history is kept.`) &&
-                deleteDay(day.id)
+              onClick={async () =>
+                (await askConfirm(
+                  `Delete "${day.name}" and its ${day.exercises.length} exercise${day.exercises.length === 1 ? "" : "s"}? Past workout history is kept.`,
+                  { okLabel: "DELETE" }
+                )) && deleteDay(day.id)
               }
               aria-label={`Delete ${day.name}`}
             >
@@ -580,10 +583,11 @@ function PlanBuilder({ store }) {
 
       <button
         className="claim-btn ghost small-btn subtle-danger"
-        onClick={() =>
-          window.confirm(
-            `Delete all ${days.length} workout${days.length === 1 ? "" : "s"} and start over? Your history and PRs are kept.`
-          ) && clearPlan()
+        onClick={async () =>
+          (await askConfirm(
+            `Delete all ${days.length} workout${days.length === 1 ? "" : "s"} and start over? Your history and PRs are kept.`,
+            { okLabel: "START OVER" }
+          )) && clearPlan()
         }
       >
         START OVER
