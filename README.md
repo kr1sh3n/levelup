@@ -42,6 +42,7 @@ The schema also supports reading every account's data, for running and improving
    select id from auth.users where email = 'you@example.com';
    ```
 2. Use [`supabase/admin-queries.sql`](supabase/admin-queries.sql) in the SQL Editor — signups, activity per account, and every logged set flattened into rows.
+3. [`supabase/rls-test.sql`](supabase/rls-test.sql) proves the access rules actually hold: it impersonates a second user and a signed-out visitor to confirm neither can read your rows, and that an admin can read but not write. Worth running after any change to the policies.
 
 Three things this deliberately does:
 
