@@ -1729,26 +1729,14 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 
 /* ── Batman artwork ── */
 .pixel-art { image-rendering: pixelated; }
-.session-art.wide { height: auto; width: 96px; top: 18px; right: 10px; transform: rotate(-6deg); }
+/* Square pixel sprites sit in the same slot as the Kitty can: small, tilted, contained. */
+.session-art.wide { height: 64px; width: 64px; top: 16px; right: 14px; transform: rotate(8deg); }
 :root[data-theme="phantom"] .section-img { height: 20px; filter: drop-shadow(0 0 4px rgba(var(--neon-rgb), 0.7)); }
 :root[data-theme="phantom"] .session-art { filter: drop-shadow(0 0 8px rgba(var(--neon-rgb), 0.55)); }
 :root[data-theme="phantom"] .logo-img { filter: drop-shadow(0 0 6px rgba(var(--neon-rgb), 0.75)); }
-/* Sign-in screen: Gotham night scene behind the form */
-:root[data-theme="phantom"] .auth-screen {
-  background:
-    linear-gradient(180deg, rgba(13, 10, 22, 0.35), rgba(13, 10, 22, 0.88) 70%),
-    url("./assets/phantom-scene.png") center top / cover no-repeat;
-  image-rendering: pixelated;
-}
-:root[data-theme="phantom"] .auth-screen .card,
-:root[data-theme="phantom"] .auth-screen .auth-logo,
-:root[data-theme="phantom"] .auth-screen .auth-tagline { image-rendering: auto; }
-:root[data-theme="phantom"] .header {
-  background-image: url("./assets/phantom-moon.png");
-  background-repeat: no-repeat;
-  background-position: right 112px top 12px;
-  background-size: 54px auto;
-}
+/* Sign-in screen: the mascot above the form, same as Hello Kitty. */
+:root[data-theme="phantom"] .auth-mascot { display: block; height: 96px; width: auto; margin: 0 auto 4px; image-rendering: pixelated; }
+:root[data-theme="phantom"] .swatch-img { image-rendering: pixelated; }
 
 /* ═══════════════════ MUSCLE MAP ═══════════════════ */
 .warmup-toggle {
@@ -2031,6 +2019,7 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
   padding: 13px 14px; border-radius: 4px; cursor: pointer; text-align: left;
   background: rgba(var(--accent-rgb), 0.1); border: 2px solid var(--border-strong); color: var(--text);
   box-shadow: 3px 3px 0 rgba(var(--shadow-rgb), 0.5); transition: border-color 0.15s, transform 0.12s;
+  font-family: var(--font-body);
 }
 .starter-btn:hover, .starter-btn:focus-visible { border-color: var(--purple); transform: translateY(-1px); }
 .starter-btn:active { transform: translateY(1px); }
@@ -2044,10 +2033,10 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
   display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; column-gap: 10px;
   width: 100%; padding: 12px 14px; border-radius: 4px; cursor: pointer; text-align: left;
   background: rgba(var(--accent-rgb), 0.12); border: 2px solid var(--border-strong); color: var(--text);
-  box-shadow: 3px 3px 0 rgba(var(--shadow-rgb), 0.5);
+  box-shadow: 3px 3px 0 rgba(var(--shadow-rgb), 0.5); font-family: var(--font-body);
 }
 .start-day-btn:hover, .start-day-btn:focus-visible { border-color: var(--purple); }
-.start-day-name { font-size: 21px; font-weight: 700; }
+.start-day-name { font-family: var(--font-display); font-size: 12px; line-height: 1.5; color: var(--purple-bright); }
 .start-day-meta { grid-row: 2; font-size: 16px; color: var(--text-muted); }
 .start-day-go {
   grid-row: 1 / span 2; grid-column: 2; align-self: center;
@@ -2161,3 +2150,9 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .confirm-box { width: 100%; max-width: 360px; margin: 0; }
 .confirm-msg { margin: 0 0 14px; font-size: 19px; line-height: 1.35; color: var(--text); }
 .danger-btn { background: linear-gradient(135deg, #e5484d, #b4232a); border-color: #e5484d; }
+
+/* The workout list runs the full card width under the theme artwork, so
+   "Full body A" stays on one line. Kitty's can is taller than Phantom's
+   sprite, so its list starts a little lower to clear it. */
+.session-with-art .start-list { margin-right: -68px; }
+:root[data-theme="kitty"] .session-with-art .start-list { margin-top: 30px; }

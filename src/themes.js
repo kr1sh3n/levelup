@@ -4,7 +4,6 @@
 import kittyLogo from "./assets/kitty-logo.png";
 import monsterCan from "./assets/monster-can.png";
 import phantomHead from "./assets/phantom-head.png";
-import phantomScene from "./assets/phantom-scene.png";
 import phantomSprite from "./assets/phantom-sprite.png";
 import phantomCard from "./assets/phantom-card.png";
 
@@ -23,7 +22,9 @@ export const THEMES = {
   phantom: {
     label: "Phantom",
     icon: "ghost",
-    swatch: `url(${phantomScene}) center 22% / cover`,
+    // Same recipe as Hello Kitty: a flat gradient with the mascot on top,
+    // not a cropped background picture.
+    swatch: "linear-gradient(135deg, #1c0f2c 0%, #3a1660 50%, #8a2fc4 100%)",
     iconColor: "#e3b8ff",
     confetti: ["#8a2fc4", "#c04bf0", "#ff2d95", "#f0c2ff"],
     metaColor: "#0b0714",
@@ -31,9 +32,9 @@ export const THEMES = {
     mapFloor: "#1c0f2c",
     mapNone: "#4a3f63",
     logoImage: phantomHead,
+    swatchImage: phantomHead,
     gymImage: phantomSprite,
     cardArt: phantomCard,
-    cardScene: phantomScene,
     pixelArt: true, // the art is nearest-neighbour pixel art: keep it crisp
   },
   kitty: {

@@ -126,12 +126,13 @@ function statTile(ctx, x, y, w, h, label, value, p) {
  * about: { name, level, title, totalXp, xpInLevel, streak, bestStreak,
  * workouts, goalsDone, skillXp, topMuscle, date }.
  */
+// Each call takes a ticket; a render that finishes after a newer one started
+// is dropped, so switching themes can never leave the previous palette painted.
+const renderTickets = new WeakMap();
+
 export async function renderCard(canvas, data, theme) {
-  const p = palette();
-  canvas.width = CARD_W * CARD_SCALE;
-  canvas.height = CARD_H * CARD_SCALE;
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(CARD_SCALE, 0, 0, CARD_SCALE, 0, 0);
+  const ticket = (renderTickets.get(canvas) || 0) + 1;
+  renderTickets.set(canvas, ticket);
 
   // Fonts must be ready, or the first render falls back to a system face.
   if (document.fonts?.ready) {
@@ -142,6 +143,15 @@ export async function renderCard(canvas, data, theme) {
     }
   }
   const [art, scene] = await Promise.all([loadImage(theme?.cardArt), loadImage(theme?.cardScene)]);
+  if (renderTickets.get(canvas) !== ticket) return;
+
+  // Read the colours only now, after the waits above: the theme may have
+  // changed while fonts and images were loading.
+  const p = palette();
+  canvas.width = CARD_W * CARD_SCALE;
+  canvas.height = CARD_H * CARD_SCALE;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(CARD_SCALE, 0, 0, CARD_SCALE, 0, 0);
 
   // ── Frame ──
   const frame = ctx.createLinearGradient(0, 0, CARD_W, CARD_H);
