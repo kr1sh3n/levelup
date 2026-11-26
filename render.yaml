@@ -1,0 +1,20 @@
+# Render Blueprint: the "rest over" push server (server/).
+# Render → New → Blueprint → pick this repo. Fill in the secret values when asked.
+services:
+  - type: web
+    name: pdash-push
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false

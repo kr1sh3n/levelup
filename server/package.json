@@ -1,0 +1,16 @@
+{
+  "name": "pdash-push",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sends Pdash's \"rest over\" web push notifications at the right time.",
+  "type": "module",
+  "main": "index.js",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node index.js",
+    "keys": "web-push generate-vapid-keys"
+  },
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}

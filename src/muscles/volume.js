@@ -64,6 +64,11 @@ export function collectSets(state) {
       if (!name) continue;
       for (const s of ex.sets || []) {
         out.push({ date, name, weight: s.weight, reps: s.reps, warmup: !!s.warmup, rir: s.rir ?? null });
+        // Each lighter round of a drop set is trained volume (taken close to
+        // failure), so it counts as a set here. Records ignore them (see prs.js).
+        for (const d of s.drops || []) {
+          out.push({ date, name, weight: d.weight, reps: d.reps, warmup: false, rir: 0, drop: true });
+        }
       }
     }
   }

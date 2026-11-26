@@ -10,6 +10,8 @@ import {
 } from "./gameData";
 import { defaultState, migrate, todayStr, uid, looksLikeSave } from "./storage";
 import { supabase, fetchRemoteState, pushRemoteState } from "./cloud";
+import { historyFor, prKind } from "./prs";
+import { exerciseKey } from "./muscles/exercises";
 import { askConfirm } from "./confirm";
 
 const LEGACY_KEY = "levelup_v1";
@@ -524,6 +526,15 @@ export function useGameStore(user) {
     [commit]
   );
 
+  // Super set: links this exercise to the one after it in the plan.
+  const toggleSuperset = useCallback(
+    (dayId, exId) =>
+      commit((prev) => ({
+        next: mapExercises(prev, dayId, (list) => list.map((e) => (e.id === exId ? { ...e, supersetNext: !e.supersetNext } : e))),
+      })),
+    [commit]
+  );
+
   const deleteExercise = useCallback(
     (dayId, exId) => commit((prev) => ({ next: mapExercises(prev, dayId, (list) => list.filter((e) => e.id !== exId)) })),
     [commit]
@@ -553,7 +564,7 @@ export function useGameStore(user) {
   );
 
   const addSet = useCallback(
-    (dayId, ex, weight, reps, { warmup = false, rir = null } = {}) =>
+    (dayId, ex, weight, reps, { rir = null } = {}) =>
       commit((prev) => {
         const w = num(weight);
         const r = Math.round(num(reps));
@@ -561,26 +572,16 @@ export function useGameStore(user) {
         const s = sessionFor(prev, dayId);
         if (!s || s.log.completedAt) return null;
         const exLog = s.log.ex[ex.id] || { sets: [], done: false };
-        const prKey = ex.name.toLowerCase().trim();
-        const prevPr = prev.prs[prKey] || { name: ex.name, maxWeight: 0, maxVolume: 0 };
-        // Warm-ups are logged for the record but never count towards PRs or the muscle map.
-        const isWeightPr = !warmup && w > 0 && w > prevPr.maxWeight;
-        const isVolumePr = !warmup && w > 0 && w * r > prevPr.maxVolume;
-        const isPr = isWeightPr || isVolumePr;
-        // RIR (reps in reserve) is how many more reps were left in the tank.
-        // Warm-ups never carry one, and null means "not recorded".
+        // Records come from the whole history (logged + imported), matched by
+        // exercise name, so a deleted set can't leave a stale record behind.
+        const kind = prKind(historyFor(prev, ex.name), { weight: w, reps: r });
+        const isPr = !!kind;
+        // RIR (reps in reserve) is how many more reps were left in the tank;
+        // null means "not recorded".
         const rr = rir == null || rir === "" ? null : Math.max(0, Math.min(10, Math.round(num(rir))));
-        const newSet = warmup
-          ? { weight: w, reps: r, pr: false, warmup: true }
-          : { weight: w, reps: r, pr: isWeightPr, ...(rr == null ? {} : { rir: rr }) };
+        const newSet = { weight: w, reps: r, pr: isPr, ...(isPr ? { prKind: kind } : {}), ...(rr == null ? {} : { rir: rr }) };
         const base = {
           ...prev,
-          prs: warmup
-            ? prev.prs
-            : {
-                ...prev.prs,
-                [prKey]: { name: ex.name, maxWeight: Math.max(prevPr.maxWeight, w), maxVolume: Math.max(prevPr.maxVolume, w * r) },
-              },
           workoutLogs: {
             ...prev.workoutLogs,
             [s.today]: {
@@ -591,11 +592,52 @@ export function useGameStore(user) {
           },
         };
         const x = withXp(base, isPr ? PR_XP : 0, "fitness");
-        const prMilestone = { type: "pr", pr: { name: ex.name, kind: isWeightPr ? "weight" : "volume", weight: w, reps: r } };
+        // The first set of a new exercise is its baseline: tagged and rewarded,
+        // but no full-screen celebration (a new plan would throw five of them).
+        const celebrate = isPr && kind !== "first";
+        const prMilestone = { type: "pr", pr: { name: ex.name, kind, weight: w, reps: r } };
         return {
           next: x.next,
-          milestone: x.milestone?.type === "levelup" ? x.milestone : isPr ? prMilestone : x.milestone,
-          toast: isPr ? { text: `+${PR_XP} XP NEW PR!`, xp: PR_XP } : null,
+          milestone: x.milestone?.type === "levelup" ? x.milestone : celebrate ? prMilestone : x.milestone,
+          toast: isPr ? { text: `+${PR_XP} XP ${kind === "first" ? "FIRST SET!" : "NEW PR!"}`, xp: PR_XP } : null,
+        };
+      }),
+    [commit]
+  );
+
+  // Drop set: lighter rounds done straight after a set, stored on that set.
+  const addDrop = useCallback(
+    (dayId, exId, idx, weight, reps) =>
+      commit((prev) => {
+        const w = num(weight);
+        const r = Math.round(num(reps));
+        if (r <= 0) return null;
+        const s = sessionFor(prev, dayId);
+        const exLog = s?.log.ex[exId];
+        if (!exLog || s.log.completedAt || !exLog.sets[idx]) return null;
+        const sets = exLog.sets.map((x, i) => (i === idx ? { ...x, drops: [...(x.drops || []), { weight: w, reps: r }] } : x));
+        return {
+          next: {
+            ...prev,
+            workoutLogs: { ...prev.workoutLogs, [s.today]: { ...s.log, ex: { ...s.log.ex, [exId]: { ...exLog, sets } } } },
+          },
+        };
+      }),
+    [commit]
+  );
+
+  const deleteDrop = useCallback(
+    (dayId, exId, idx, dropIdx) =>
+      commit((prev) => {
+        const s = sessionFor(prev, dayId);
+        const exLog = s?.log.ex[exId];
+        if (!exLog || s.log.completedAt || !exLog.sets[idx]) return null;
+        const sets = exLog.sets.map((x, i) => (i === idx ? { ...x, drops: (x.drops || []).filter((_, j) => j !== dropIdx) } : x));
+        return {
+          next: {
+            ...prev,
+            workoutLogs: { ...prev.workoutLogs, [s.today]: { ...s.log, ex: { ...s.log.ex, [exId]: { ...exLog, sets } } } },
+          },
         };
       }),
     [commit]
@@ -847,16 +889,27 @@ export function useGameStore(user) {
   const activeDay = days.find((d) => d.id === activeDayId) || null;
   const activeLog = activeDay && todayLog?.dayId === activeDay.id ? todayLog : null;
 
-  const lastSessionFor = (exId) => {
-    const dates = Object.keys(state.workoutLogs).filter((d) => d < today).sort().reverse();
-    for (const d of dates) {
-      const exLog = state.workoutLogs[d]?.ex?.[exId];
-      if (exLog?.sets?.length) {
-        const top = exLog.sets.reduce((a, b) => (b.weight > a.weight ? b : a));
-        return { date: d, weight: top.weight, reps: top.reps, sets: exLog.sets.length };
+  // Every working set from the most recent earlier session of this exercise,
+  // matched by plan id or by name, so it survives rebuilding the plan and
+  // also finds sets imported from another app.
+  const lastSessionFor = (ex) => {
+    const key = exerciseKey(ex.name);
+    const byDate = new Map();
+    for (const [d, log] of Object.entries(state.workoutLogs)) {
+      if (d >= today) continue;
+      for (const [id, e] of Object.entries(log.ex || {})) {
+        if (id !== ex.id && exerciseKey(e.name || "") !== key) continue;
+        const sets = (e.sets || []).filter((x) => !x.warmup);
+        if (sets.length) byDate.set(d, [...(byDate.get(d) || []), ...sets]);
       }
     }
-    return null;
+    for (const [d, rows] of Object.entries(state.importedSets || {})) {
+      if (d >= today) continue;
+      const sets = rows.filter((r) => !r.warmup && exerciseKey(r.name) === key);
+      if (sets.length && !byDate.has(d)) byDate.set(d, sets);
+    }
+    const date = [...byDate.keys()].sort().at(-1);
+    return date ? { date, sets: byDate.get(date) } : null;
   };
 
   const goalsDueToday = state.goals.filter((g) => g.deadline === today);
@@ -889,6 +942,9 @@ export function useGameStore(user) {
     applyTemplate,
     updateDay,
     deleteDay,
+    addDrop,
+    toggleSuperset,
+    deleteDrop,
     clearPlan,
     moveDay,
     addExercise,

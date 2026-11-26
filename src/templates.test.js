@@ -27,3 +27,12 @@ describe("starter plans", () => {
     expect(restLabel(90)).toBe("1:30 min");
   });
 });
+
+import { supersetGroups } from "./templates";
+describe("super sets", () => {
+  it("groups linked exercises and ignores a dangling link on the last one", () => {
+    const ex = (id, supersetNext = false) => ({ id, supersetNext });
+    const g = supersetGroups([ex("a", true), ex("b"), ex("c"), ex("d", true), ex("e", true)]);
+    expect(g.map((x) => x.map((e) => e.id).join(""))).toEqual(["ab", "c", "de"]);
+  });
+});

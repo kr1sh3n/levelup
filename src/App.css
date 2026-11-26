@@ -2156,3 +2156,48 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
    sprite, so its list starts a little lower to clear it. */
 .session-with-art .start-list { margin-right: -68px; }
 :root[data-theme="kitty"] .session-with-art .start-list { margin-top: 30px; }
+
+/* ═══════════════════ BODYWEIGHT · DROP SETS · SUPER SETS ═══════════════════ */
+.bw-toggle {
+  flex: 0 0 auto; height: 36px; padding: 0 9px; border-radius: 3px; cursor: pointer;
+  background: rgba(var(--well-rgb), 0.3); border: 1px solid var(--border-strong); color: var(--text-muted);
+  font-family: var(--font-display); font-size: 9px;
+}
+.bw-toggle.on { background: var(--accent); border-color: var(--purple); color: var(--on-accent); }
+.bw-chip {
+  flex: 1 1 62px; min-width: 62px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border-strong); border-radius: 3px; color: var(--text-muted); font-size: 16px;
+}
+.set-row .drop-btn { padding: 3px 6px; font-size: 13px; flex-shrink: 0; }
+.drop-part { white-space: nowrap; color: var(--text-muted); }
+.drop-del {
+  background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 13px;
+}
+.set-row .set-vol { white-space: normal; }
+.drop-form { margin: 4px 0 6px 18px; }
+.drop-arrow { color: var(--purple-light); font-size: 18px; }
+.exercise-last .last-set { white-space: nowrap; }
+.exercise-last .last-date { color: var(--text-muted); }
+
+.superset-group {
+  border: 2px dashed var(--border-strong); border-radius: 6px; padding: 8px; margin-bottom: 14px;
+  background: rgba(var(--accent-rgb), 0.05);
+}
+.superset-group .exercise-card:last-child { margin-bottom: 0; }
+.superset-title { font-family: var(--font-display); font-size: 9px; color: var(--purple-light); letter-spacing: 0.5px; margin: 2px 2px 8px; }
+.ss-tag {
+  display: inline-block; margin-right: 6px; padding: 1px 5px; border-radius: 3px; font-size: 13px;
+  background: var(--accent); color: var(--on-accent); vertical-align: middle;
+}
+.ss-next { margin-top: 6px; font-size: 15px; color: var(--purple-light); }
+.ss-link { padding: 5px 7px; font-size: 13px; }
+.ss-link.on { background: var(--accent); color: var(--on-accent); border-color: var(--purple); }
+/* Set rows wrap: the set itself on the first line, tags and buttons after. */
+.set-row { flex-wrap: wrap; row-gap: 6px; }
+.set-row .set-vol { flex: 1 1 150px; font-size: 11px; line-height: 1.6; }
+.set-row .pr-tag { white-space: nowrap; }
+.drop-del { margin-left: 2px; border: 1px solid var(--border); border-radius: 2px; line-height: 1; padding: 1px 3px; }
+.superset-title { font-size: 8px; line-height: 1.6; }
+.ss-sub { font-family: var(--font-body); font-size: 15px; letter-spacing: 0; color: var(--text-muted); }
+.notify-link { display: block; margin-top: 8px; font-size: 16px; color: var(--purple-light); background: none; border: none; padding: 0; text-decoration: underline; cursor: pointer; }
+.rest-note { margin-top: 6px; font-size: 15px; color: var(--text-muted); }

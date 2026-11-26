@@ -44,3 +44,19 @@ export function restLabel(sec) {
   if (!sec) return "";
   return sec % 60 === 0 ? `${sec / 60} min` : `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")} min`;
 }
+
+// Splits a day's exercises into super set groups (exercises linked with
+// "supersetNext") and singles.
+export function supersetGroups(exercises) {
+  const groups = [];
+  let cur = [];
+  exercises.forEach((ex, i) => {
+    cur.push(ex);
+    const linked = ex.supersetNext && i < exercises.length - 1;
+    if (!linked) {
+      groups.push(cur);
+      cur = [];
+    }
+  });
+  return groups;
+}

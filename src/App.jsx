@@ -655,7 +655,12 @@ function MilestoneOverlay({ milestone, onDismiss, colors }) {
     sub = `Incredible discipline. ${getStreakMultiplier(milestone.streak)}x XP multiplier unlocked!`;
   } else if (milestone.type === "pr") {
     title = "NEW PR!";
-    sub = `${milestone.pr.name}: ${milestone.pr.weight}kg × ${milestone.pr.reps}. ${milestone.pr.kind === "weight" ? "Heaviest ever!" : "Best volume ever!"}`;
+    {
+      const { name, weight, reps, kind } = milestone.pr;
+      const what = weight > 0 ? `${weight}kg × ${reps}` : `Bodyweight × ${reps}`;
+      const why = { weight: "Heaviest ever!", reps: "Most reps ever at this weight!", e1rm: "Strongest set ever (estimated 1-rep max)!" }[kind] || "New record!";
+      sub = `${name}: ${what}. ${why}`;
+    }
   } else {
     title = "BOSS DEFEATED!";
     sub = "You completed every goal due today. You are unstoppable.";

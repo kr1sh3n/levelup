@@ -2,100 +2,125 @@ import { useState, useEffect, useRef } from "react";
 import { WEEKDAY_SHORT, LIFT_XP, getStreakMultiplier } from "./gameData";
 import { THEMES, themeOf } from "./themes";
 import { LIBRARY } from "./muscles/exercises";
-import { DEFAULT_REPS, DEFAULT_REST, REST_OPTIONS, TEMPLATES, restLabel } from "./templates";
+import { DEFAULT_REPS, DEFAULT_REST, REST_OPTIONS, TEMPLATES, restLabel, supersetGroups } from "./templates";
 import { askConfirm } from "./confirm";
+import { chime } from "./sound";
+import { cancelRestPush, enablePush, pushConfigured, pushEnabled, scheduleRestPush } from "./push";
+import { PR_LABEL, recordsList } from "./prs";
 
 // Offered as suggestions while typing an exercise name. Picking one of these
 // also means the muscle map knows which muscles it works.
 const LIBRARY_NAMES = [...new Set(LIBRARY.map((e) => e.name))].sort((a, b) => a.localeCompare(b));
 
 // ── Rest timer ────────────────────────────────────────────────────────────────
-function beep() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.type = "sine";
-    o.frequency.value = 880;
-    g.gain.setValueAtTime(0.18, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-    o.start();
-    o.stop(ctx.currentTime + 0.4);
-    setTimeout(() => ctx.close(), 600);
-  } catch {
-    /* audio not available — silent fallback */
-  }
-}
-
 function fmt(s) {
   const m = Math.floor(s / 60);
   const sec = s % 60;
-  return `${m}:${sec.toString().padStart(2, "0")}`;
+  return `${m}:${String(sec).padStart(2, "0")}`;
 }
 
-// Rest lengths for a select: the standard 2-5 minutes, plus whatever an older
-// exercise was saved with so it is not silently changed.
 function restChoices(current) {
-  const n = Number(current);
-  return REST_OPTIONS.includes(n) || !n ? REST_OPTIONS : [...REST_OPTIONS, n].sort((a, b) => a - b);
+  return REST_OPTIONS.includes(current) ? REST_OPTIONS : [...REST_OPTIONS, current].sort((a, b) => a - b);
 }
 
 // `signal` changes ({ n, sec }) each time a set is logged → auto-start with that exercise's rest.
+//
+// The countdown is kept as an end time, not a number ticked down each second:
+// an iPhone pauses a page's timers while it is in the background, so a
+// ticking counter came back with time still on it. Now it is always right,
+// and the "rest over" push (if turned on) fires from the server on time.
 function RestTimer({ signal }) {
   const [duration, setDuration] = useState(DEFAULT_REST);
-  const [timeLeft, setTimeLeft] = useState(DEFAULT_REST);
-  const [running, setRunning] = useState(false);
+  const [endAt, setEndAt] = useState(null); // running: when it ends
+  const [pausedLeft, setPausedLeft] = useState(DEFAULT_REST); // stopped: seconds left
+  const [now, setNow] = useState(() => Date.now());
   const [justDone, setJustDone] = useState(false);
+  const [notify, setNotify] = useState(pushEnabled);
+  const [notifyMsg, setNotifyMsg] = useState(null);
   const durationRef = useRef(duration);
   useEffect(() => {
     durationRef.current = duration;
   }, [duration]);
+
+  const running = endAt !== null;
+  const timeLeft = running ? Math.max(0, Math.ceil((endAt - now) / 1000)) : pausedLeft;
+
+  function start(sec) {
+    const end = Date.now() + sec * 1000;
+    setEndAt(end);
+    setNow(Date.now());
+    setJustDone(false);
+    scheduleRestPush(end);
+  }
 
   useEffect(() => {
     if (!signal.n) return;
     const sec = signal.sec > 0 ? signal.sec : durationRef.current;
     const t = setTimeout(() => {
       setDuration(sec);
-      setTimeLeft(sec);
-      setJustDone(false);
-      setRunning(true);
+      start(sec);
     }, 0);
     return () => clearTimeout(t);
   }, [signal]);
 
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          setRunning(false);
-          setJustDone(true);
-          try { navigator.vibrate?.(200); } catch { /* no-op */ }
-          beep();
-          setTimeout(() => setJustDone(false), 2500);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
+    const tick = () => setNow(Date.now());
+    const id = setInterval(tick, 250);
+    document.addEventListener("visibilitychange", tick);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", tick);
+    };
   }, [running]);
+
+  useEffect(() => {
+    if (!running || now < endAt) return;
+    const late = now - endAt > 5000; // came back to the app long after it ended
+    const t = setTimeout(() => {
+      setEndAt(null);
+      setPausedLeft(0);
+      setJustDone(true);
+      if (!late) {
+        try { navigator.vibrate?.(300); } catch { /* no-op */ }
+        chime();
+      }
+      setTimeout(() => setJustDone(false), 2500);
+    }, 0);
+    return () => clearTimeout(t);
+  }, [running, now, endAt]);
 
   function pickLength(sec) {
     setDuration(sec);
-    setTimeLeft(sec);
-    setRunning(false);
+    setEndAt(null);
+    setPausedLeft(sec);
     setJustDone(false);
+    cancelRestPush();
   }
   function toggle() {
-    if (timeLeft === 0) { setTimeLeft(duration); setJustDone(false); setRunning(true); }
-    else setRunning((r) => !r);
+    if (running) {
+      setPausedLeft(timeLeft);
+      setEndAt(null);
+      cancelRestPush();
+    } else start(timeLeft === 0 ? duration : timeLeft);
   }
-  function reset() { setRunning(false); setTimeLeft(duration); setJustDone(false); }
+  function reset() {
+    setEndAt(null);
+    setPausedLeft(duration);
+    setJustDone(false);
+    cancelRestPush();
+  }
+  async function turnOnNotify() {
+    setNotifyMsg(null);
+    try {
+      await enablePush();
+      setNotify(true);
+      setNotifyMsg("You'll get a notification when rest is over.");
+      if (running) scheduleRestPush(endAt);
+    } catch (err) {
+      setNotifyMsg(err.message || "Couldn't turn on notifications.");
+    }
+  }
 
   // One compact row: the timer used to fill the screen above the exercises.
   return (
@@ -115,6 +140,12 @@ function RestTimer({ signal }) {
         </button>
         <button className="rest-btn" onClick={reset}>RESET</button>
       </div>
+      {pushConfigured() && !notify && (
+        <button type="button" className="link-btn notify-link" onClick={turnOnNotify}>
+          🔔 Notify me when rest is over
+        </button>
+      )}
+      {notifyMsg && <div className="rest-note">{notifyMsg}</div>}
     </div>
   );
 }
@@ -139,39 +170,106 @@ const fmtShortDate = (key) => {
 };
 
 const weightText = (w) => (Number(w) > 0 ? `${w} kg` : "Bodyweight");
+// Short form for lists: "40×5", "BW×12".
+const short = (x) => `${Number(x.weight) > 0 ? x.weight : "BW"}×${x.reps}`;
+const shortWithDrops = (x) => [short(x), ...(x.drops || []).map(short)].join(" → ");
+
+// Turns a kg field into a number: commas allowed, blank or negative refused.
+function parseKg(raw) {
+  const w = String(raw).trim().replace(",", ".");
+  if (w === "" || Number.isNaN(Number(w)) || Number(w) < 0) return null;
+  return w;
+}
 
 // ── Today's session ──────────────────────────────────────────────────────────
-function SetRow({ set, index, onDelete, locked }) {
+function DropForm({ onAdd, onCancel, bodyweight }) {
+  const [weight, setWeight] = useState("");
+  const [reps, setReps] = useState("");
+  const [err, setErr] = useState(null);
+  function submit(e) {
+    e.preventDefault();
+    const w = bodyweight ? "0" : parseKg(weight);
+    if (w === null) return setErr("Enter the lighter weight.");
+    if (!(Number(reps) > 0)) return setErr("Enter the reps.");
+    onAdd(w, reps);
+  }
   return (
-    <div className="set-row">
-      <span className="set-num">Set {index + 1}</span>
-      <span className="set-vol">{weightText(set.weight)} × {set.reps}</span>
-      {set.rir != null && <span className="rir-tag">RIR {set.rir}</span>}
-      {set.pr && <span className="pr-tag">PR</span>}
-      {!locked && (
-        <button className="del-btn small" onClick={onDelete} aria-label={`Delete set ${index + 1}`}>×</button>
-      )}
-    </div>
+    <>
+      <form className="set-form drop-form" onSubmit={submit} noValidate>
+        <span className="drop-arrow">↳</span>
+        {!bodyweight && (
+          <input className="meal-input small" type="text" inputMode="decimal" autoComplete="off" placeholder="kg" value={weight} onChange={(e) => setWeight(e.target.value)} aria-label="Drop weight in kg" autoFocus />
+        )}
+        <span className="set-x">×</span>
+        <input className="meal-input small" type="text" inputMode="numeric" autoComplete="off" placeholder="reps" value={reps} onChange={(e) => setReps(e.target.value.replace(/[^0-9]/g, ""))} aria-label="Drop reps" autoFocus={bodyweight} />
+        <button type="submit" className="add-set-btn">ADD</button>
+        <button type="button" className="mini-btn ghost" onClick={onCancel}>CANCEL</button>
+      </form>
+      {err && <div className="form-msg err">{err}</div>}
+    </>
   );
 }
 
-function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
-  const { addSet, deleteSet, toggleExerciseDone, lastSessionFor } = store;
+function SetRow({ set, index, onDelete, onDeleteDrop, onAddDrop, locked, bodyweight }) {
+  const [dropping, setDropping] = useState(false);
+  return (
+    <>
+      <div className="set-row">
+        <span className="set-num">Set {index + 1}</span>
+        <span className="set-vol">
+          {weightText(set.weight)} × {set.reps}
+          {(set.drops || []).map((d, j) => (
+            <span key={j} className="drop-part">
+              {" → "}{short(d)}
+              {!locked && (
+                <button type="button" className="drop-del" onClick={() => onDeleteDrop(j)} aria-label={`Remove drop ${j + 1}`}>×</button>
+              )}
+            </span>
+          ))}
+        </span>
+        {set.rir != null && <span className="rir-tag">RIR {set.rir}</span>}
+        {set.pr && <span className="pr-tag" title="Personal record">{set.prKind && set.prKind !== "first" ? `PR · ${PR_LABEL[set.prKind]}` : "PR"}</span>}
+        {!locked && !dropping && (
+          <button type="button" className="mini-btn ghost drop-btn" onClick={() => setDropping(true)} title="Drop set: lower the weight and keep going">+ DROP</button>
+        )}
+        {!locked && (
+          <button className="del-btn small" onClick={onDelete} aria-label={`Delete set ${index + 1}`}>×</button>
+        )}
+      </div>
+      {dropping && (
+        <DropForm
+          bodyweight={bodyweight}
+          onCancel={() => setDropping(false)}
+          onAdd={(w, r) => { onAddDrop(w, r); setDropping(false); }}
+        />
+      )}
+    </>
+  );
+}
+
+function ExerciseLogCard({ ex, day, log, store, onSetAdded, superset }) {
+  const { addSet, deleteSet, addDrop, deleteDrop, toggleExerciseDone, lastSessionFor } = store;
+  const last = lastSessionFor(ex);
   // Everything is typed by hand: nothing is prefilled from earlier sets.
   const [weight, setWeight] = useState("");
   const [reps, setReps] = useState("");
   const [rir, setRir] = useState("");
   const [err, setErr] = useState(null);
+  // Bodyweight exercises (pull-ups, dips): no kg to type. Starts on if last
+  // time was all bodyweight.
+  const [bw, setBw] = useState(() => !!last && last.sets.every((x) => !(Number(x.weight) > 0)));
   const locked = !!log?.completedAt;
   const exLog = log?.ex[ex.id] || { sets: [], done: false };
-  const last = lastSessionFor(ex.id);
+
+  // In a super set, rest comes after the last exercise of the group; the
+  // others go straight on to the next one.
+  const restAfter = superset && !superset.last ? null : ex.restSec;
 
   function submit(e) {
     e.preventDefault();
-    const w = weight.trim().replace(",", ".");
-    // A blank weight used to be saved as 0 kg. Ask instead (0 = bodyweight).
-    if (w === "" || Number.isNaN(Number(w)) || Number(w) < 0) {
-      setErr("Enter the weight you lifted (0 for bodyweight).");
+    const w = bw ? "0" : parseKg(weight);
+    if (w === null) {
+      setErr("Enter the weight you lifted, or tap BW for bodyweight.");
       return;
     }
     if (!reps || !(Number(reps) > 0)) {
@@ -183,14 +281,17 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
     setWeight("");
     setReps("");
     setRir("");
-    onSetAdded(ex.restSec);
+    onSetAdded(restAfter);
   }
 
   return (
-    <div className={`exercise-card ${exLog.done ? "done" : ""}`}>
+    <div className={`exercise-card ${exLog.done ? "done" : ""} ${superset ? "in-superset" : ""}`}>
       <div className="exercise-head">
         <div className="exercise-headinfo">
-          <div className="exercise-name">{ex.name}</div>
+          <div className="exercise-name">
+            {superset && <span className="ss-tag">{superset.label}</span>}
+            {ex.name}
+          </div>
           <div className="exercise-target">{targetLine(ex)}</div>
           {ex.notes && <div className="exercise-cue">{ex.notes}</div>}
         </div>
@@ -207,26 +308,57 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
       </div>
 
       <div className="exercise-last">
-        {last ? `Last time: ${weightText(last.weight)} × ${last.reps} (${last.sets} ${last.sets === 1 ? "set" : "sets"})` : "No history yet"}
+        {last ? (
+          <>
+            Last time <span className="last-date">({fmtShortDate(last.date)})</span>:{" "}
+            {last.sets.map((x, i) => (
+              <span key={i} className="last-set">{i > 0 && " · "}{shortWithDrops(x)}</span>
+            ))}
+          </>
+        ) : (
+          "No history yet"
+        )}
       </div>
 
       {exLog.sets.map((s, i) => (
-        <SetRow key={i} set={s} index={i} locked={locked} onDelete={() => deleteSet(day.id, ex.id, i)} />
+        <SetRow
+          key={i}
+          set={s}
+          index={i}
+          locked={locked}
+          bodyweight={bw}
+          onDelete={() => deleteSet(day.id, ex.id, i)}
+          onDeleteDrop={(j) => deleteDrop(day.id, ex.id, i, j)}
+          onAddDrop={(w, r) => { addDrop(day.id, ex.id, i, w, r); onSetAdded(restAfter); }}
+        />
       ))}
 
       {!locked && (
         <>
           <form className="set-form" onSubmit={submit} noValidate>
-            <input
-              className="meal-input small"
-              type="text"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="kg"
-              value={weight}
-              onChange={(e) => setWeight(e.target.value)}
-              aria-label={`${ex.name} weight in kg`}
-            />
+            {bw ? (
+              <span className="bw-chip" aria-label="Bodyweight">Bodyweight</span>
+            ) : (
+              <input
+                className="meal-input small"
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="kg"
+                value={weight}
+                onChange={(e) => setWeight(e.target.value)}
+                aria-label={`${ex.name} weight in kg`}
+              />
+            )}
+            <button
+              type="button"
+              className={`bw-toggle ${bw ? "on" : ""}`}
+              onClick={() => { setBw(!bw); setErr(null); }}
+              aria-pressed={bw}
+              title="Bodyweight exercise (no added weight)"
+            >
+              BW
+            </button>
             <span className="set-x">×</span>
             <input
               className="meal-input small"
@@ -256,6 +388,7 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded }) {
             <button type="submit" className="add-set-btn">+ SET</button>
           </form>
           {err && <div className="form-msg err">{err}</div>}
+          {superset && !superset.last && <div className="ss-next">Super set: go straight to {superset.nextName}, no rest.</div>}
         </>
       )}
     </div>
@@ -435,6 +568,17 @@ function DayEditor({ day, store, onClose }) {
               <div className="builder-meta">{targetLine(ex)}</div>
               {ex.notes && <div className="builder-meta notes">{ex.notes}</div>}
             </div>
+            {idx < day.exercises.length - 1 && (
+              <button
+                type="button"
+                className={`mini-btn ghost ss-link ${ex.supersetNext ? "on" : ""}`}
+                onClick={() => store.toggleSuperset(day.id, ex.id)}
+                aria-pressed={!!ex.supersetNext}
+                title={`Super set: do ${ex.name} and the next exercise back to back`}
+              >
+                {ex.supersetNext ? "⛓ LINKED" : "⛓ LINK"}
+              </button>
+            )}
             <button className="mini-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`}>EDIT</button>
             <button
               className="del-btn small"
@@ -626,7 +770,7 @@ function WorkoutHistory({ state }) {
 export default function GymTab({ store }) {
   const { state, activeDay, activeLog } = store;
   const [restSignal, setRestSignal] = useState({ n: 0, sec: 0 });
-  const prList = Object.values(state.prs).filter((p) => p.maxWeight > 0).sort((a, b) => b.maxWeight - a.maxWeight);
+  const prList = recordsList(state);
 
   return (
     <div className="page">
@@ -645,16 +789,33 @@ export default function GymTab({ store }) {
       {activeDay && activeDay.exercises.length > 0 && (
         <>
           {!activeLog?.completedAt && <RestTimer signal={restSignal} />}
-          {activeDay.exercises.map((ex) => (
-            <ExerciseLogCard
-              key={ex.id}
-              ex={ex}
-              day={activeDay}
-              log={activeLog}
-              store={store}
-              onSetAdded={(sec) => setRestSignal((s) => ({ n: s.n + 1, sec }))}
-            />
-          ))}
+          {(() => {
+            let letter = 0;
+            return supersetGroups(activeDay.exercises).map((group) => {
+              const onSetAdded = (sec) => sec !== null && setRestSignal((s) => ({ n: s.n + 1, sec }));
+              if (group.length === 1) {
+                const ex = group[0];
+                return <ExerciseLogCard key={ex.id} ex={ex} day={activeDay} log={activeLog} store={store} onSetAdded={onSetAdded} />;
+              }
+              const L = String.fromCharCode(65 + letter++);
+              return (
+                <div key={group[0].id} className="superset-group">
+                  <div className="superset-title">SUPER SET {L} <span className="ss-sub">· back to back, then rest</span></div>
+                  {group.map((ex, i) => (
+                    <ExerciseLogCard
+                      key={ex.id}
+                      ex={ex}
+                      day={activeDay}
+                      log={activeLog}
+                      store={store}
+                      onSetAdded={onSetAdded}
+                      superset={{ label: `${L}${i + 1}`, last: i === group.length - 1, nextName: group[i + 1]?.name }}
+                    />
+                  ))}
+                </div>
+              );
+            });
+          })()}
         </>
       )}
 
@@ -667,7 +828,7 @@ export default function GymTab({ store }) {
           {prList.map((p) => (
             <div key={p.name} className="pr-record">
               <span className="pr-record-name">{p.name}</span>
-              <span className="pr-record-val">{p.maxWeight} kg</span>
+              <span className="pr-record-val">{p.weight > 0 ? `${p.weight} kg × ${p.reps}` : `BW × ${p.bwReps}`}</span>
             </div>
           ))}
         </div>

@@ -40,6 +40,8 @@ export default defineConfig({
         // Keeping it out of the precache saves every install half a megabyte.
         globIgnores: ['**/draco_decoder-*.js'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
+        // Push handler for "rest over" notifications (public/push-sw.js).
+        importScripts: ['push-sw.js'],
       },
     }),
   ],
