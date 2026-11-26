@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef } from "react";
 import { WEEKDAY_SHORT, LIFT_XP, getStreakMultiplier } from "./gameData";
 import { THEMES, themeOf } from "./themes";
 import { LIBRARY } from "./muscles/exercises";
@@ -35,6 +35,8 @@ function RestTimer({ signal }) {
   const [pausedLeft, setPausedLeft] = useState(DEFAULT_REST); // stopped: seconds left
   const [now, setNow] = useState(() => Date.now());
   const [justDone, setJustDone] = useState(false);
+  // Rings until you tap RESET (or start another rest), so it can't be missed.
+  const [ringing, setRinging] = useState(false);
   const [notify, setNotify] = useState(pushEnabled);
   const [notifyMsg, setNotifyMsg] = useState(null);
   const durationRef = useRef(duration);
@@ -50,6 +52,7 @@ function RestTimer({ signal }) {
     setEndAt(end);
     setNow(Date.now());
     setJustDone(false);
+    setRinging(false);
     scheduleRestPush(end);
   }
 
@@ -76,21 +79,29 @@ function RestTimer({ signal }) {
 
   useEffect(() => {
     if (!running || now < endAt) return;
-    const late = now - endAt > 5000; // came back to the app long after it ended
     const t = setTimeout(() => {
       setEndAt(null);
       setPausedLeft(0);
       setJustDone(true);
-      if (!late) {
-        try { navigator.vibrate?.(300); } catch { /* no-op */ }
-        chime();
-      }
-      setTimeout(() => setJustDone(false), 2500);
+      setRinging(true);
     }, 0);
     return () => clearTimeout(t);
   }, [running, now, endAt]);
 
+  // The chime repeats every 1.5 s until stopped.
+  useEffect(() => {
+    if (!ringing) return;
+    const ring = () => {
+      chime();
+      try { navigator.vibrate?.(300); } catch { /* no-op */ }
+    };
+    ring();
+    const id = setInterval(ring, 1500);
+    return () => clearInterval(id);
+  }, [ringing]);
+
   function pickLength(sec) {
+    setRinging(false);
     setDuration(sec);
     setEndAt(null);
     setPausedLeft(sec);
@@ -98,6 +109,7 @@ function RestTimer({ signal }) {
     cancelRestPush();
   }
   function toggle() {
+    setRinging(false);
     if (running) {
       setPausedLeft(timeLeft);
       setEndAt(null);
@@ -105,6 +117,7 @@ function RestTimer({ signal }) {
     } else start(timeLeft === 0 ? duration : timeLeft);
   }
   function reset() {
+    setRinging(false);
     setEndAt(null);
     setPausedLeft(duration);
     setJustDone(false);
@@ -138,7 +151,7 @@ function RestTimer({ signal }) {
         <button className="rest-btn primary" onClick={toggle}>
           {running ? "PAUSE" : timeLeft === 0 ? "RESTART" : "START"}
         </button>
-        <button className="rest-btn" onClick={reset}>RESET</button>
+        <button className={`rest-btn ${ringing ? "ringing" : ""}`} onClick={reset}>{ringing ? "🔔 STOP" : "RESET"}</button>
       </div>
       {pushConfigured() && !notify && (
         <button type="button" className="link-btn notify-link" onClick={turnOnNotify}>
@@ -388,7 +401,7 @@ function ExerciseLogCard({ ex, day, log, store, onSetAdded, superset }) {
             <button type="submit" className="add-set-btn">+ SET</button>
           </form>
           {err && <div className="form-msg err">{err}</div>}
-          {superset && !superset.last && <div className="ss-next">Super set: go straight to {superset.nextName}, no rest.</div>}
+          {superset && !superset.last && <div className="ss-next">Superset: go straight to {superset.nextName}, no rest.</div>}
         </>
       )}
     </div>
@@ -558,7 +571,8 @@ function DayEditor({ day, store, onClose }) {
             onCancel={() => setEditingId(null)}
           />
         ) : (
-          <div key={ex.id} className="builder-row">
+          <Fragment key={ex.id}>
+          <div className="builder-row">
             <div className="builder-arrows">
               <button onClick={() => moveExercise(day.id, ex.id, -1)} disabled={idx === 0} aria-label={`Move ${ex.name} up`}>▲</button>
               <button onClick={() => moveExercise(day.id, ex.id, 1)} disabled={idx === day.exercises.length - 1} aria-label={`Move ${ex.name} down`}>▼</button>
@@ -568,17 +582,6 @@ function DayEditor({ day, store, onClose }) {
               <div className="builder-meta">{targetLine(ex)}</div>
               {ex.notes && <div className="builder-meta notes">{ex.notes}</div>}
             </div>
-            {idx < day.exercises.length - 1 && (
-              <button
-                type="button"
-                className={`mini-btn ghost ss-link ${ex.supersetNext ? "on" : ""}`}
-                onClick={() => store.toggleSuperset(day.id, ex.id)}
-                aria-pressed={!!ex.supersetNext}
-                title={`Super set: do ${ex.name} and the next exercise back to back`}
-              >
-                {ex.supersetNext ? "⛓ LINKED" : "⛓ LINK"}
-              </button>
-            )}
             <button className="mini-btn" onClick={() => { setEditingId(ex.id); setAdding(false); }} aria-label={`Edit ${ex.name}`}>EDIT</button>
             <button
               className="del-btn small"
@@ -588,6 +591,24 @@ function DayEditor({ day, store, onClose }) {
               ×
             </button>
           </div>
+          {/* The super set switch sits between the two exercises it joins, so
+              it's clear exactly which pair it means. */}
+          {idx < day.exercises.length - 1 && (
+            <button
+              type="button"
+              className={`ss-join ${ex.supersetNext ? "on" : ""}`}
+              onClick={() => store.toggleSuperset(day.id, ex.id)}
+              aria-pressed={!!ex.supersetNext}
+              aria-label={
+                ex.supersetNext
+                  ? `${ex.name} and ${day.exercises[idx + 1].name} are a superset. Tap to split them.`
+                  : `Make ${ex.name} and ${day.exercises[idx + 1].name} a superset`
+              }
+            >
+              {ex.supersetNext ? "⛓ SUPERSET · tap to split" : "+ superset with the next one"}
+            </button>
+          )}
+          </Fragment>
         )
       )}
 
@@ -800,7 +821,7 @@ export default function GymTab({ store }) {
               const L = String.fromCharCode(65 + letter++);
               return (
                 <div key={group[0].id} className="superset-group">
-                  <div className="superset-title">SUPER SET {L} <span className="ss-sub">· back to back, then rest</span></div>
+                  <div className="superset-title">SUPERSET {L} <span className="ss-sub">· back to back, then rest</span></div>
                   {group.map((ex, i) => (
                     <ExerciseLogCard
                       key={ex.id}

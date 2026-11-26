@@ -36,3 +36,21 @@ describe("super sets", () => {
     expect(g.map((x) => x.map((e) => e.id).join(""))).toEqual(["ab", "c", "de"]);
   });
 });
+
+import { keepLinksSafe } from "./useGameStore";
+describe("superset links", () => {
+  const ex = (id, supersetNext = false) => ({ id, supersetNext });
+  it("drops a link when its next exercise changes (delete, move, add)", () => {
+    const before = [ex("ohp", true), ex("row"), ex("press")];
+    // delete the row: OHP must not slide into a superset with "press"
+    expect(keepLinksSafe(before, [before[0], before[2]]).map((e) => e.supersetNext)).toEqual([false, false]);
+    // move OHP below row
+    expect(keepLinksSafe(before, [before[1], before[0], before[2]]).every((e) => !e.supersetNext)).toBe(true);
+    // unchanged order keeps it
+    expect(keepLinksSafe(before, before)[0].supersetNext).toBe(true);
+  });
+  it("a dangling link on the last exercise never captures a newly added one", () => {
+    const before = [ex("a"), ex("b", true)];
+    expect(keepLinksSafe(before, [...before, ex("c")])[1].supersetNext).toBe(false);
+  });
+});

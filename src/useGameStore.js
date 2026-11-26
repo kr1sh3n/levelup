@@ -129,10 +129,22 @@ const exerciseFields = (ex) => ({
   notes: (ex.notes || "").trim(),
 });
 
+// A super set link joins an exercise to the one right after it. If a move,
+// delete or add gives it a different neighbour, the link is dropped: it must
+// never quietly pull in an exercise the user didn't pick.
+export function keepLinksSafe(before, after) {
+  const nextOf = (list) => new Map(list.map((e, i) => [e.id, list[i + 1]?.id ?? null]));
+  const was = nextOf(before);
+  const now = nextOf(after);
+  return after.map((e) =>
+    e.supersetNext && (now.get(e.id) === null || was.get(e.id) !== now.get(e.id)) ? { ...e, supersetNext: false } : e
+  );
+}
+
 const mapExercises = (prev, dayId, fn) =>
   setDays(
     prev,
-    prev.workoutPlan.days.map((d) => (d.id === dayId ? { ...d, exercises: fn(d.exercises) } : d))
+    prev.workoutPlan.days.map((d) => (d.id === dayId ? { ...d, exercises: keepLinksSafe(d.exercises, fn(d.exercises)) } : d))
   );
 
 const sessionFor = (prev, dayId) => {

@@ -2201,3 +2201,17 @@ button.task-check { background: none; cursor: pointer; padding: 0; font-family: 
 .ss-sub { font-family: var(--font-body); font-size: 15px; letter-spacing: 0; color: var(--text-muted); }
 .notify-link { display: block; margin-top: 8px; font-size: 16px; color: var(--purple-light); background: none; border: none; padding: 0; text-decoration: underline; cursor: pointer; }
 .rest-note { margin-top: 6px; font-size: 15px; color: var(--text-muted); }
+/* Superset switch between two exercises in the plan editor. */
+.ss-join {
+  display: block; width: calc(100% - 40px); margin: -4px auto 6px; padding: 4px 8px; cursor: pointer;
+  background: transparent; border: 1px dashed var(--border); border-radius: 3px;
+  color: var(--text-muted); font-family: var(--font-body); font-size: 15px;
+}
+.ss-join:hover { border-color: var(--border-strong); color: var(--text); }
+.ss-join.on {
+  border: 2px solid var(--purple); color: var(--purple-bright); background: rgba(var(--accent-rgb), 0.12);
+  font-family: var(--font-display); font-size: 9px; padding: 7px 8px;
+}
+.rest-btn.ringing { background: var(--accent); color: var(--on-accent); border-color: var(--purple); animation: ring-pulse 0.75s ease-in-out infinite alternate; }
+@keyframes ring-pulse { from { transform: scale(1); } to { transform: scale(1.05); } }
+@media (prefers-reduced-motion: reduce) { .rest-btn.ringing { animation: none; } }
