@@ -101,7 +101,7 @@ const server = http.createServer(async (req, res) => {
 
     cancel(id);
     const payload = JSON.stringify({
-      title: typeof title === "string" ? title.slice(0, 60) : "Rest over 💪",
+      title: typeof title === "string" ? title.slice(0, 60) : "Rest over",
       body: typeof text === "string" ? text.slice(0, 120) : "Time for your next set.",
     });
     // If the server was asleep and woke up late, send straight away.

@@ -39,7 +39,7 @@ Free plan: the server sleeps after 15 minutes without requests and takes about a
 ## 4. On the iPhone
 
 1. Open the Vercel URL in Safari → Share → **Add to Home Screen** (it's a new address, so a new install).
-2. Open it from the Home Screen, sign in, start a workout, tap **🔔 Notify me when rest is over**, allow.
+2. Open it from the Home Screen, sign in, start a workout, tap **Notify me when rest is over** (the bell link under the rest timer), allow.
 3. Log a set and lock the phone: the notification arrives when the rest ends.
 
 ## 5. Retiring GitHub Pages (once Vercel works)

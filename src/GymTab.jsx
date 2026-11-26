@@ -4,6 +4,7 @@ import { THEMES, themeOf } from "./themes";
 import { LIBRARY } from "./muscles/exercises";
 import { DEFAULT_REPS, DEFAULT_REST, REST_OPTIONS, TEMPLATES, restLabel, supersetGroups } from "./templates";
 import { askConfirm } from "./confirm";
+import PixelIcon from "./PixelIcon";
 import { chime } from "./sound";
 import { cancelRestPush, enablePush, pushConfigured, pushEnabled, scheduleRestPush } from "./push";
 import { PR_LABEL, recordsList } from "./prs";
@@ -151,11 +152,11 @@ function RestTimer({ signal }) {
         <button className="rest-btn primary" onClick={toggle}>
           {running ? "PAUSE" : timeLeft === 0 ? "RESTART" : "START"}
         </button>
-        <button className={`rest-btn ${ringing ? "ringing" : ""}`} onClick={reset}>{ringing ? "🔔 STOP" : "RESET"}</button>
+        <button className={`rest-btn ${ringing ? "ringing" : ""}`} onClick={reset}>{ringing ? <><PixelIcon name="bell" size={12} /> STOP</> : "RESET"}</button>
       </div>
       {pushConfigured() && !notify && (
         <button type="button" className="link-btn notify-link" onClick={turnOnNotify}>
-          🔔 Notify me when rest is over
+          <PixelIcon name="bell" size={12} /> Notify me when rest is over
         </button>
       )}
       {notifyMsg && <div className="rest-note">{notifyMsg}</div>}
@@ -605,7 +606,7 @@ function DayEditor({ day, store, onClose }) {
                   : `Make ${ex.name} and ${day.exercises[idx + 1].name} a superset`
               }
             >
-              {ex.supersetNext ? "⛓ SUPERSET · tap to split" : "+ superset with the next one"}
+              {ex.supersetNext ? "SUPERSET · tap to split" : "+ superset with the next one"}
             </button>
           )}
           </Fragment>
